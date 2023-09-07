@@ -45,6 +45,13 @@ pip install -r requirements.txt
 
 This library is still in development and is not yet ready for use.
 
+An example script is provided that prints the activations of a GPT2-style Transformer using pretrained weights.
+To run it, simply execute the following command.
+
+```bash
+python example.py
+```
+
 ## License
 
 This project is licensed under the terms of the MIT license.
