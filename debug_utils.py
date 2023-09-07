@@ -4,20 +4,28 @@ from jaxtyping import Array
 Data = Union[Array, Dict[str, "Data"]]
 
 
-def print_nested_structure(data: Data, indent: int = 0):
-    if isinstance(data, dict):
-        for key, value in data.items():
-            print(f"\n{'  ' * indent}{key}:", end=" ")
-            print_nested_structure(value, indent + 1)
-    elif isinstance(data, (list, tuple)):
-        for i, value in enumerate(data):
-            print(f"\n{'  ' * indent}{i}:", end=" ")
-            print_nested_structure(value, indent + 1)
-    elif "shape" in dir(data):
-        print(f"{data.shape}", end="")
-    else:
-        print(data)
-        raise TypeError("Input must be an array or a dictionary")
+def _as_str(d: Data, i: int = 0) -> str:
+    indent = "  " * i
+    space = " " if i != 0 else ""
 
-    if indent == 0:
-        print("")
+    s = ""
+    if isinstance(d, dict):
+        for key, value in d.items():
+            s += f"\n{indent}{key}:"
+            s += _as_str(value, i + 1)  # recurse
+    elif isinstance(d, (list, tuple)):
+        for j, value in enumerate(d):
+            s += f"\n{indent}{j}:"
+            s += _as_str(value, i + 1)  # recurse
+    elif "shape" in dir(d):
+        s += f"{space}{d.shape}."
+    else:
+        s += f"{space}{d}."
+
+    if i == 0 and len(s) > 0 and s[0] == "\n":
+        s = s[1:]
+    return s
+
+
+def tree_print(data: Data):
+    print(_as_str(data))
