@@ -1,17 +1,18 @@
-from tx.modules import TransformerConfig, Transformer
-
-
 if __name__ == "__main__":
     import jax
+    from tx.modules import Transformer
+    from tx.models import PretrainedGPT2Model
 
     from debug_utils import tree_print
 
-    config = TransformerConfig()
+    # Create model and input
+    model = Transformer.from_config(PretrainedGPT2Model.tx_config)
+    rand_input = jax.random.randint(jax.random.PRNGKey(0), (1, 1024), 0, 50257)
 
-    rng = jax.random.PRNGKey(0)
-    tokens = jax.random.randint(rng, (1, config.context_length), 0, config.vocab_dim)
+    # Initialise model parameters (either randomly or from pretrained model)
+    # variables = model.init(jax.random.PRNGKey(0), rand_input)
+    variables = {"params": PretrainedGPT2Model.from_pretrained("gpt2").to_params()}
 
-    model = Transformer()
-    variables = model.init(rng, tokens)
-    logits, state = model.apply(variables, tokens, mutable=["intermediates"])
+    # Apply model to input and print intermediate values (activations, etc.)
+    logits, state = model.apply(variables, rand_input, mutable=["intermediates"])
     tree_print(state["intermediates"])

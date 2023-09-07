@@ -86,7 +86,7 @@ class TransformerBlock(Module):
     def __call__(self, x: Float[Array, "b p m"]) -> Float[Array, "b p m"]:
         x_norm = self.ln_1(x)
         x = self.attn(x_norm) + x
-        self.intermediate("attention_output", x)
+        # self.intermediate("attention_output", x)
 
         x_norm = self.ln_2(x)
         x = self.mlp(x_norm) + x
@@ -103,6 +103,10 @@ class Transformer(Module):
     mlp_dim: int = 3072
     num_layers: int = 12
     init_range: float = 0.02
+
+    @classmethod
+    def from_config(cls, config: TransformerConfig):
+        return cls(**config.__dict__)
 
     def setup(self):
         self.embed = Embed(
@@ -143,11 +147,11 @@ class Transformer(Module):
         self.intermediate("positional_embedding", pos_embed)
 
         x = embed + pos_embed  # combine embeddings
-        self.intermediate("residual", x)
+        # self.intermediate("residual", x)
 
         for block in self.blocks:  # loop over layers/blocks
             x = block(x)  # apply attention and mlp
-            self.intermediate("residual", x)
+            # self.intermediate("residual", x)
 
         x = self.ln_f(x)  # apply final layer norm
         self.intermediate("final_output", x)
