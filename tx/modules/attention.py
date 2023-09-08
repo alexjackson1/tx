@@ -1,8 +1,11 @@
+from typing import Tuple
+from jaxtyping import Array, Float
+
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-from functools import partial
-from jaxtyping import Array, Float
 
 from .common import Module
 
@@ -16,7 +19,7 @@ class Attention(Module):
 
     def setup(self):
         self.mask = nn.make_causal_mask(
-            jnp.ones((1, self.context_length), dtype="bool"),
+            jnp.ones((self.context_length), dtype="bool"),
             dtype="bool",
         )
 
@@ -30,37 +33,26 @@ class Attention(Module):
         self.c_proj = init_dense(features=self.model_dim)
 
     @nn.compact
-    def __call__(self, x: Float[Array, "b p m"]) -> Float[Array, "b p m"]:
+    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         """
         References:
         - `flax.linen.attention`.
         """
-        batch_size = x.shape[0]
-
         # Apply a linear transformation to the input tensor.
         hidden_states = self.c_attn(x)
 
         # Split the hidden states into query, key, and value.
         query, key, value = self._split_outputs(hidden_states)
-        query_length, key_length = query.shape[1], key.shape[1]
-        self.intermediate("query", query)
-        self.intermediate("key", key)
-        self.intermediate("value", value)
+        query_length, key_length = query.shape[-3], key.shape[-3]
+        self._qkv_intermediates((query, key, value))
 
         # Compute the attention weights.
-        depth = query.shape[-1]
-        query = query / jnp.sqrt(depth)
+        query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
         # self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
-        mask = self.mask[:, :, :query_length, :key_length]
-        mask = jnp.broadcast_to(
-            mask,
-            (batch_size, *mask.shape[1:]),
-        )
-        # self.intermediate("mask", mask)
-
+        mask = self.mask[:, :query_length, :key_length]
         big_neg = jnp.finfo(jnp.float32).min
         scores = jnp.where(mask, scores, big_neg)
 
@@ -76,13 +68,18 @@ class Attention(Module):
         output = self.c_proj(self._merge_heads(z))
         return output
 
-    def _split_outputs(self, hidden_states: Array):
-        return map(self._split_heads, jnp.split(hidden_states, 3, axis=2))
+    def _qkv_intermediates(self, qkv: Tuple[Array, Array, Array]) -> bool:
+        ret_vals = []
+        for name, value in zip(("query", "key", "value"), qkv):
+            ret_vals.append(self.intermediate(name, value))
 
-    def _split_heads(self, hidden_states: Array):
-        return hidden_states.reshape(
-            hidden_states.shape[:2] + (self.num_heads, self.head_dim)
-        )
+        return all(ret_vals)
 
-    def _merge_heads(self, hidden_states: Array):
-        return hidden_states.reshape(hidden_states.shape[:2] + (self.model_dim,))
+    def _split_outputs(self, states: Array):
+        return map(self._split_heads, jnp.split(states, 3, axis=-1))
+
+    def _split_heads(self, states: Array):
+        return states.reshape((states.shape[0], self.num_heads, self.head_dim))
+
+    def _merge_heads(self, states: Array):
+        return states.reshape((states.shape[0], self.model_dim))
