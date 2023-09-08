@@ -107,7 +107,7 @@ def test_pos_embed_init():
 
 def test_pos_embed_apply():
     layer = PosEmbed(features=768, num_embeddings=1024)
-    shape = (2, 4)
+    shape = (4,)
     variables = init(layer, shape, jnp.int32)
     output = apply_int(layer, variables, shape)
     features = layer.features
@@ -116,13 +116,13 @@ def test_pos_embed_apply():
 
 def test_attention_init():
     layer = Attention(num_heads=12, head_dim=64, model_dim=768, context_length=1024)
-    shape = (2, 4, 768)
+    shape = (4, 768)
     init(layer, shape)
 
 
 def test_attention_apply():
     layer = Attention(num_heads=12, head_dim=64, model_dim=768, context_length=1024)
-    shape = (2, 4, 768)
+    shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)
     assert output.shape == shape
@@ -130,13 +130,13 @@ def test_attention_apply():
 
 def test_mlp_init():
     layer = MLP(features=[3072, 768])
-    shape = (2, 4, 768)
+    shape = (4, 768)
     init(layer, shape)
 
 
 def test_mlp_apply():
     layer = MLP(features=[3072, 768])
-    shape = (2, 4, 768)
+    shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)
     assert output.shape == shape
@@ -151,7 +151,7 @@ def test_transformer_block_init(config):
         epsilon=1e-5,
         context_length=1024,
     )
-    shape = (2, 4, 768)
+    shape = (4, 768)
     init(layer, shape)
 
 
@@ -164,7 +164,7 @@ def test_transformer_block_apply():
         epsilon=1e-5,
         context_length=1024,
     )
-    shape = (2, 4, 768)
+    shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)
     assert output.shape == shape
@@ -172,13 +172,13 @@ def test_transformer_block_apply():
 
 def test_unembed_init():
     layer = Unembed(features=768, num_embeddings=50257)
-    shape = (2, 4, 768)
+    shape = (4, 768)
     init(layer, shape)
 
 
 def test_unembed_apply():
     layer = Unembed(features=768, num_embeddings=50257)
-    shape = (2, 4, 768)
+    shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)
     assert output.shape == (*shape[:-1], 50257)
@@ -186,13 +186,13 @@ def test_unembed_apply():
 
 def test_transformer_init():
     layer = Transformer()
-    shape = (2, 4)
+    shape = (4,)
     init(layer, shape, jnp.int32)
 
 
 def test_transformer_apply():
     layer = Transformer()
-    shape = (2, 4)
+    shape = (4,)
     variables = init(layer, shape, jnp.int32)
     output = apply_int(layer, variables, shape)
     assert output.shape == (*shape, 50257)

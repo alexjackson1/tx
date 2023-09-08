@@ -37,10 +37,6 @@ class MLP(Module):
     features: Iterable[int]
     init_range: float = 0.02
 
-    @classmethod
-    def from_config(cls, config: TransformerConfig):
-        return cls(**config.__dict__)
-
     def setup(self):
         k_init = jax.nn.initializers.normal(stddev=self.init_range)
         b_init = jax.nn.initializers.zeros
@@ -48,7 +44,7 @@ class MLP(Module):
         self.fc_1 = d_init(features=self.features[0])
         self.proj = d_init(features=self.features[1])
 
-    def __call__(self, x: Float[Array, "b p m"]) -> Float[Array, "b p m"]:
+    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         x = self.fc_1(x)
         self.intermediate("pre_activation", x)
 
@@ -83,7 +79,7 @@ class TransformerBlock(Module):
             init_range=self.init_range,
         )
 
-    def __call__(self, x: Float[Array, "b p m"]) -> Float[Array, "b p m"]:
+    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         x_norm = self.ln_1(x)
         x = self.attn(x_norm) + x
         # self.intermediate("attention_output", x)
@@ -139,7 +135,7 @@ class Transformer(Module):
             init_range=self.init_range,
         )
 
-    def __call__(self, tokens) -> Array:
+    def __call__(self, tokens: Float[Array, "seq"]) -> Float[Array, "seq vocab"]:
         embed = self.embed(tokens)  # text embedding
         self.intermediate("embedding", embed)
 
