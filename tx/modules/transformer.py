@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, List
 from jaxtyping import Array, Float
 
 import dataclasses
@@ -6,8 +6,9 @@ from functools import partial
 
 import jax
 import flax.linen as nn
+import flax.struct as struct
 
-from .common import LayerNorm, Embed, PosEmbed, Module, Unembed
+from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import Attention
 
 
@@ -33,9 +34,16 @@ class TransformerConfig:
     """The range of the normal distribution used to initialize the weights."""
 
 
-class MLP(Module):
+class MLP(nn.Module):
     features: Iterable[int]
     init_range: float = 0.02
+
+    intermediates: List[str] = struct.field(default_factory=list)
+
+    def intermediate(self, name: str, value: Array) -> bool:
+        if name in self.intermediates:
+            return self.sow("intermediates", name, value)
+        return False
 
     def setup(self):
         k_init = jax.nn.initializers.normal(stddev=self.init_range)
@@ -55,7 +63,7 @@ class MLP(Module):
         return x
 
 
-class TransformerBlock(Module):
+class TransformerBlock(nn.Module):
     num_heads: int
     head_dim: int
     model_dim: int
@@ -63,6 +71,13 @@ class TransformerBlock(Module):
     context_length: int
     epsilon: float = 1e-5
     init_range: float = 0.02
+
+    intermediates: List[str] = struct.field(default_factory=list)
+
+    def intermediate(self, name: str, value: Array) -> bool:
+        if name in self.intermediates:
+            return self.sow("intermediates", name, value)
+        return False
 
     def setup(self):
         self.ln_1 = LayerNorm(epsilon=self.epsilon)
@@ -82,14 +97,14 @@ class TransformerBlock(Module):
     def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         x_norm = self.ln_1(x)
         x = self.attn(x_norm) + x
-        # self.intermediate("attention_output", x)
+        self.intermediate("attention_output", x)
 
         x_norm = self.ln_2(x)
         x = self.mlp(x_norm) + x
         return x
 
 
-class Transformer(Module):
+class Transformer(nn.Module):
     model_dim: int = 768
     layer_norm_eps: Float = 1e-5
     vocab_dim: int = 50257
@@ -100,9 +115,16 @@ class Transformer(Module):
     num_layers: int = 12
     init_range: float = 0.02
 
+    intermediates: List[str] = struct.field(default_factory=list)
+
+    def intermediate(self, name: str, value: Array) -> bool:
+        if name in self.intermediates:
+            return self.sow("intermediates", name, value)
+        return False
+
     @classmethod
-    def from_config(cls, config: TransformerConfig):
-        return cls(**config.__dict__)
+    def from_config(cls, config: TransformerConfig, **kwargs):
+        return cls(**config.__dict__, **kwargs)
 
     def setup(self):
         self.embed = Embed(
@@ -143,11 +165,11 @@ class Transformer(Module):
         self.intermediate("positional_embedding", pos_embed)
 
         x = embed + pos_embed  # combine embeddings
-        # self.intermediate("residual", x)
+        self.intermediate("residual", x)
 
         for block in self.blocks:  # loop over layers/blocks
             x = block(x)  # apply attention and mlp
-            # self.intermediate("residual", x)
+            self.intermediate("residual", x)
 
         x = self.ln_f(x)  # apply final layer norm
         self.intermediate("final_output", x)

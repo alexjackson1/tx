@@ -185,3 +185,7 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
     hf_unembed_out = hf_unembed(gpt2._params, model_dim, vocab_dim, hf_ln_f_out)
     assert tx_unembed_out.shape == hf_unembed_out.shape
     assert jnp.allclose(tx_unembed_out, hf_unembed_out, atol=1e-6, rtol=1e-6)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

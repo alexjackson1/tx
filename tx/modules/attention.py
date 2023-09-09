@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 from jaxtyping import Array, Float
 
 from functools import partial
@@ -6,16 +6,22 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+import flax.struct as struct
 
-from .common import Module
 
-
-class Attention(Module):
+class Attention(nn.Module):
     num_heads: int
     head_dim: int
     model_dim: int
     context_length: int
     init_range: float = 0.02
+
+    intermediates: List[str] = struct.field(default_factory=list)
+
+    def intermediate(self, name: str, value: Array) -> bool:
+        if name in self.intermediates:
+            return self.sow("intermediates", name, value)
+        return False
 
     def setup(self):
         self.mask = nn.make_causal_mask(

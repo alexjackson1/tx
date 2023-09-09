@@ -1,4 +1,3 @@
-from typing import Any
 from jaxtyping import Array, Float, Int
 
 import jax
@@ -7,12 +6,7 @@ import flax.linen as nn
 import einops
 
 
-class Module(nn.Module):
-    def intermediate(self, name: str, value: Any) -> bool:
-        return self.sow("intermediates", name, value)
-
-
-class LayerNorm(Module):
+class LayerNorm(nn.Module):
     epsilon: float = 1e-5
 
     @nn.compact
@@ -28,7 +22,7 @@ class LayerNorm(Module):
         return x
 
 
-class Embed(Module):
+class Embed(nn.Module):
     num_embeddings: int
     features: int
     init_range: float = 0.02
@@ -42,7 +36,7 @@ class Embed(Module):
         return jnp.take(self.embedding, tokens, axis=0)
 
 
-class PosEmbed(Module):
+class PosEmbed(nn.Module):
     num_embeddings: int
     features: int
     init_range: float = 0.02
@@ -56,7 +50,7 @@ class PosEmbed(Module):
         return self.embedding[: tokens.shape[0]]
 
 
-class Unembed(Module):
+class Unembed(nn.Module):
     features: int
     num_embeddings: int
     init_range: float = 0.02
