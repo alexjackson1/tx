@@ -98,10 +98,12 @@ class TransformerBlock(nn.Module):
 
     def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         x_norm = self.ln_1(x)
+        self.intermediate("ln_1_output", x_norm)
         x = self.attn(x_norm) + x
         self.intermediate("attention_output", x)
 
         x_norm = self.ln_2(x)
+        self.intermediate("ln_2_output", x_norm)
         x = self.mlp(x_norm) + x
         return x
 

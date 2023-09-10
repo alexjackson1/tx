@@ -15,6 +15,8 @@ class Intermediates(Enum):
     attn_q = "query"
     attn_k = "key"
     attn_v = "value"
+    block_ln_1_output = "ln_1_output"
+    block_ln_2_output = "ln_2_output"
 
 
 AllIntermediates = [i.value for i in Intermediates]
