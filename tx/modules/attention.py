@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 from jaxtyping import Array, Float
 
 from functools import partial
@@ -6,16 +6,22 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+import flax.struct as struct
 
-from .common import Module
 
-
-class Attention(Module):
+class Attention(nn.Module):
     num_heads: int
     head_dim: int
     model_dim: int
     context_length: int
     init_range: float = 0.02
+
+    intermediates: List[str] = struct.field(default_factory=list)
+
+    def intermediate(self, name: str, value: Array) -> bool:
+        if name in self.intermediates:
+            return self.sow("intermediates", name, value)
+        return False
 
     def setup(self):
         self.mask = nn.make_causal_mask(
@@ -49,7 +55,7 @@ class Attention(Module):
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
-        # self.intermediate("scores", scores)
+        self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
         mask = self.mask[:, :query_length, :key_length]
@@ -62,7 +68,7 @@ class Attention(Module):
 
         # Apply the attention pattern to the value tensor.
         z = jnp.einsum("...hqk,...khd->...qhd", pattern, value)
-        # self.intermediate("z", z)
+        self.intermediate("z", z)
 
         # Apply a linear transformation to the attention output.
         output = self.c_proj(self._merge_heads(z))
