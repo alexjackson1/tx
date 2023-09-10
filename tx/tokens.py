@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizerBase
 def prepends_bos_token(tokenizer: PreTrainedTokenizerBase) -> bool:
     bos_token_id = tokenizer.bos_token_id
     blank_input_ids = tokenizer("")["input_ids"]
-    return not (len(blank_input_ids) > 0 and blank_input_ids[0] == bos_token_id)
+    return len(blank_input_ids) > 0 and blank_input_ids[0] == bos_token_id
 
 
 def configure_tokenizer(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokenizerBase:
@@ -32,6 +32,7 @@ def to_tokens(
     text = input if not prepend_bos else tokenizer.bos_token + input
     max_length = max_length if truncate else None
     add_special_tokens = not prepends_bos_token(tokenizer)
+    print(add_special_tokens)
     output = tokenizer(
         text,
         return_tensors="jax",
@@ -43,7 +44,5 @@ def to_tokens(
     return output["input_ids"][0]
 
 
-def tokens_to_str(
-    tokenizer: PreTrainedTokenizerBase, tokens: Int[Array, "seq"]
-) -> List[str]:
+def to_str(tokenizer: PreTrainedTokenizerBase, tokens: Int[Array, "seq"]) -> List[str]:
     return tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)

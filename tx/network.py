@@ -39,7 +39,7 @@ class GenerativeModel:
 
         self.tokenizer = token_utils.configure_tokenizer(self.tokenizer)
 
-    def to_tokens(
+    def str_to_tokens(
         self,
         input: str,
         prepend_bos: bool = False,
@@ -54,16 +54,16 @@ class GenerativeModel:
         )
 
     def tokens_to_str(self, tokens: Int[Array, "seq"]) -> List[str]:
-        return token_utils.tokens_to_str(self.tokenizer, tokens)
+        return token_utils.to_str(self.tokenizer, tokens)
 
-    def to_str_tokens(
+    def as_str_tokens(
         self,
         input: str,
         prepend_bos: bool = False,
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
     ) -> List[str]:
-        tokens = self.to_tokens(input, prepend_bos, truncate, max_length)
+        tokens = self.str_to_tokens(input, prepend_bos, truncate, max_length)
         return self.tokens_to_str(tokens)
 
     def generate(self, sequence: str, max_length: Int = 50) -> str:
@@ -72,7 +72,7 @@ class GenerativeModel:
         if self.variables is None:
             raise ValueError("Variables not provided")
 
-        inputs = self.to_tokens(sequence, prepend_bos=True)
+        inputs = self.str_to_tokens(sequence, prepend_bos=True)
         inputs = self.tokenizer.encode(sequence, return_tensors="jax")
         inputs = inputs.reshape(-1)
         transformer = Transformer.from_config(self.config)
