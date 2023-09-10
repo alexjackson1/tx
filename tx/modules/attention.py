@@ -55,7 +55,7 @@ class Attention(nn.Module):
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
-        # self.intermediate("scores", scores)
+        self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
         mask = self.mask[:, :query_length, :key_length]
@@ -68,7 +68,7 @@ class Attention(nn.Module):
 
         # Apply the attention pattern to the value tensor.
         z = jnp.einsum("...hqk,...khd->...qhd", pattern, value)
-        # self.intermediate("z", z)
+        self.intermediate("z", z)
 
         # Apply a linear transformation to the attention output.
         output = self.c_proj(self._merge_heads(z))
