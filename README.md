@@ -5,6 +5,12 @@ library[^1] using JAX and the Flax module system.
 
 [^1]: Formerly 'EasyTransformer', 'TransformerLens' is maintained by Joseph Bloom and was created by Neel Nanda.
 
+The main distinguishing features of this library are as follows.
+
+- No dependencies on PyTorch, all numerical operations are performed using JAX.
+- The Flax module system is used for defining networks and storing activations.
+- Simplified low-level module implementations are provided in a 'single batch' style.
+
 ## Installation
 
 The following prerequisites are required to use the library.
@@ -43,12 +49,7 @@ pip install -r requirements.txt
 
 This library is still in development and is not yet ready for use.
 
-An example script is provided that prints the activations of a GPT2-style Transformer using pretrained weights.
-To run it, simply execute the following command.
-
-```bash
-python example.py
-```
+The notebook(s) in the `examples` directory follow the tutorials on mechanistic interpretability provided [here](https://arena-ch1-transformers.streamlit.app).
 
 ## Relation to `TransformerLens`
 

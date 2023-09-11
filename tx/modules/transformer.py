@@ -87,19 +87,23 @@ class TransformerBlock(nn.Module):
             model_dim=self.model_dim,
             init_range=self.init_range,
             context_length=self.context_length,
+            intermediates=self.intermediates,
         )
         self.ln_2 = LayerNorm(epsilon=self.epsilon)
         self.mlp = MLP(
             features=[self.mlp_dim, self.model_dim],
             init_range=self.init_range,
+            intermediates=self.intermediates,
         )
 
     def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         x_norm = self.ln_1(x)
+        self.intermediate("ln_1_output", x_norm)
         x = self.attn(x_norm) + x
         self.intermediate("attention_output", x)
 
         x_norm = self.ln_2(x)
+        self.intermediate("ln_2_output", x_norm)
         x = self.mlp(x_norm) + x
         return x
 
@@ -147,6 +151,7 @@ class Transformer(nn.Module):
                 epsilon=self.layer_norm_eps,
                 context_length=self.context_length,
                 init_range=self.init_range,
+                intermediates=self.intermediates,
             )
             for i in range(self.num_layers)
         ]
