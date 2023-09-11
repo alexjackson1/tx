@@ -16,7 +16,7 @@ import einops
 
 import tx.modules as tx
 from tx.models import PretrainedGPT2Model
-from tx.params import flax_attention_params, tfs_attention_params
+from examples.params import tfs_attention_params
 from tx.modules.transformer import TransformerConfig
 
 

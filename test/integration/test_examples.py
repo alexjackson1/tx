@@ -11,7 +11,7 @@ def test_notebook_execution(notebook_file):
     executor = ExecutePreprocessor(timeout=600, kernel_name="python3")
 
     try:
-        executor.preprocess(notebook_content, {"metadata": {"path": "./"}})
+        executor.preprocess(notebook_content, {"metadata": {"path": "./examples"}})
     except Exception as e:
         pytest.fail(f"Error in notebook execution: {str(e)}")
 
