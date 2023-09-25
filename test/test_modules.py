@@ -115,13 +115,13 @@ def test_pos_embed_apply():
 
 
 def test_attention_init():
-    layer = Attention(num_heads=12, head_dim=64, model_dim=768, context_length=1024)
+    layer = Attention(num_heads=12, head_dim=64, model_dim=768)
     shape = (4, 768)
     init(layer, shape)
 
 
 def test_attention_apply():
-    layer = Attention(num_heads=12, head_dim=64, model_dim=768, context_length=1024)
+    layer = Attention(num_heads=12, head_dim=64, model_dim=768)
     shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)
@@ -149,7 +149,6 @@ def test_transformer_block_init(config):
         model_dim=768,
         mlp_dim=3072,
         epsilon=1e-5,
-        context_length=1024,
     )
     shape = (4, 768)
     init(layer, shape)
@@ -162,7 +161,6 @@ def test_transformer_block_apply():
         model_dim=768,
         mlp_dim=3072,
         epsilon=1e-5,
-        context_length=1024,
     )
     shape = (4, 768)
     variables = init(layer, shape)

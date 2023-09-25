@@ -77,7 +77,6 @@ def tx_transformer_block(
     head_dim: int,
     model_dim: int,
     mlp_dim: int,
-    context_length: int,
     input: Array,
 ) -> Array:
     module = TransformerBlock(
@@ -85,7 +84,6 @@ def tx_transformer_block(
         head_dim=head_dim,
         model_dim=model_dim,
         mlp_dim=mlp_dim,
-        context_length=context_length,
     )
     return tx_apply(module, params[name], input)
 
@@ -156,7 +154,7 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
     # Transformer blocks
     next_input = tx_embed_out + tx_pos_embed_out
     for i in range(gpt2_config.num_layers):
-        ## Transformer bl`ock
+        ## Transformer block
         tx_block_out = tx_transformer_block(
             gpt2_params,
             f"block_{i}",
@@ -164,7 +162,6 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
             head_dim=gpt2_config.head_dim,
             model_dim=gpt2_config.model_dim,
             mlp_dim=gpt2_config.mlp_dim,
-            context_length=gpt2_config.context_length,
             input=next_input,
         )
         hf_block_out = hf_transformer_block(gpt2._params, f"{i}", next_input)

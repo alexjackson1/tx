@@ -15,7 +15,6 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
         mlp_dim=3072,
         num_layers=12,
         vocab_dim=50257,
-        context_length=1024,
         layer_norm_eps=1e-5,
         init_range=0.02,
     )

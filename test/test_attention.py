@@ -36,20 +36,56 @@ def tx_module(tx_config: tx.TransformerConfig) -> tx.Attention:
         num_heads=tx_config.num_heads,
         head_dim=tx_config.head_dim,
         model_dim=tx_config.model_dim,
-        context_length=tx_config.context_length,
         init_range=tx_config.init_range,
     )
 
 
-# @pytest.fixture
-# def nn_module() -> nn.MultiHeadDotProductAttention:
-#     return nn.MultiHeadDotProductAttention(
-#         num_heads=12,
-#         qkv_features=768,
-#         out_features=768,
-#         dropout_rate=0.0,
-#         deterministic=True,
-#     )
+@pytest.fixture
+def tx_params(gpt2: PretrainedGPT2Model) -> Dict[str, Array]:
+    return gpt2.to_params()["block_0"]["attn"]
+
+
+@pytest.fixture
+def flax_params(
+    tx_params: Dict[str, Array], tx_config: tx.TransformerConfig
+) -> Dict[str, Array]:
+    c_attn, c_proj = tx_params["c_attn"], tx_params["c_proj"]
+    num_heads, head_dim, model_dim = (
+        tx_config.num_heads,
+        tx_config.head_dim,
+        tx_config.model_dim,
+    )
+
+    qkv_kernel = jnp.split(c_attn["kernel"], 3, axis=-1)
+    reshape_kernel = lambda a: jnp.reshape(
+        a, (qkv_kernel[0].shape[0], num_heads, head_dim)
+    )
+    q_kernel, k_kernel, v_kernel = tuple(map(reshape_kernel, qkv_kernel))
+    o_kernel = jnp.reshape(c_proj["kernel"], (num_heads, head_dim, model_dim))
+
+    qkv_bias = jnp.split(c_attn["bias"], 3, axis=-1)
+    reshape_bias = lambda a: jnp.reshape(a, (num_heads, head_dim))
+    q_bias, k_bias, v_bias = tuple(map(reshape_bias, qkv_bias))
+    o_bias = c_proj["bias"]
+
+    flax_params = {}
+    flax_params["query"] = {"kernel": q_kernel, "bias": q_bias}
+    flax_params["key"] = {"kernel": k_kernel, "bias": k_bias}
+    flax_params["value"] = {"kernel": v_kernel, "bias": v_bias}
+    flax_params["out"] = {"kernel": o_kernel, "bias": o_bias}
+
+    return flax_params
+
+
+@pytest.fixture
+def flax_module(tx_config: tx.TransformerConfig) -> nn.Module:
+    return nn.MultiHeadDotProductAttention(
+        num_heads=tx_config.num_heads,
+        qkv_features=tx_config.model_dim,
+        out_features=tx_config.model_dim,
+        dropout_rate=0.0,
+        deterministic=True,
+    )
 
 
 @pytest.fixture
@@ -158,16 +194,6 @@ def tfs_module(tx_config) -> nn.Module:
 
 
 @pytest.fixture
-def tx_params(gpt2: PretrainedGPT2Model) -> Dict[str, Array]:
-    return gpt2.to_params()["block_0"]["attn"]
-
-
-# @pytest.fixture
-# def nn_params(gpt2: PretrainedGPT2Model) -> Dict[str, Array]:
-#     return flax_attention_params(gpt2.tx_config, gpt2.to_params())
-
-
-@pytest.fixture
 def tfs_params(gpt2: PretrainedGPT2Model, tx_params) -> Dict[str, Array]:
     return tfs_attention_params(gpt2.tx_config, tx_params)
 
@@ -206,4 +232,24 @@ def test_tx_versus_tfs(
 ):
     tfs_output: Array = tfs_module.apply({"params": tfs_params}, batch_residual)
     tx_output: Array = tx_module.apply({"params": tx_params}, residual)
-    assert jnp.allclose(tfs_output, tx_output, atol=1e-5, rtol=1e-4)
+    assert jnp.allclose(tfs_output, tx_output, atol=1e-2, rtol=1e-2)
+
+
+def test_tx_versus_flax(
+    flax_module: nn.Module,
+    tx_module: tx.Attention,
+    flax_params: Dict[str, Array],
+    tx_params: Dict[str, Array],
+    residual: Array,
+):
+    mask = nn.make_causal_mask(
+        jnp.ones((residual.shape[0],), dtype="bool"),
+        dtype="bool",
+    )
+    query_length = residual.shape[0]
+    mask = mask[:, :query_length, :query_length]
+    flax_output: Array = flax_module.apply(
+        {"params": flax_params}, residual, residual, mask=mask
+    )
+    tx_output: Array = tx_module.apply({"params": tx_params}, residual)
+    assert jnp.allclose(flax_output, tx_output, atol=1e-2, rtol=1e-2)

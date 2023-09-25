@@ -13,8 +13,8 @@ class Attention(nn.Module):
     num_heads: int
     head_dim: int
     model_dim: int
-    context_length: int
     init_range: float = 0.02
+    use_bias: bool = True
 
     intermediates: List[str] = struct.field(default_factory=list)
 
@@ -23,29 +23,17 @@ class Attention(nn.Module):
             return self.sow("intermediates", name, value)
         return False
 
-    def setup(self):
-        self.mask = nn.make_causal_mask(
-            jnp.ones((self.context_length), dtype="bool"),
-            dtype="bool",
-        )
-
+    @nn.compact
+    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
         init_dense = partial(
             nn.DenseGeneral,
             kernel_init=jax.nn.initializers.normal(stddev=self.init_range),
             bias_init=jax.nn.initializers.zeros,
+            use_bias=self.use_bias,
         )
 
-        self.c_attn = init_dense(features=3 * self.model_dim)
-        self.c_proj = init_dense(features=self.model_dim)
-
-    @nn.compact
-    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
-        """
-        References:
-        - `flax.linen.attention`.
-        """
         # Apply a linear transformation to the input tensor.
-        hidden_states = self.c_attn(x)
+        hidden_states = init_dense(name="c_attn", features=3 * self.model_dim)(x)
 
         # Split the hidden states into query, key, and value.
         query, key, value = self._split_outputs(hidden_states)
@@ -58,20 +46,22 @@ class Attention(nn.Module):
         self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
-        mask = self.mask[:, :query_length, :key_length]
+        mask = nn.make_causal_mask(jnp.ones((x.shape[0],)), dtype="bool")
+        mask = mask[:, :query_length, :key_length]
         big_neg = jnp.finfo(jnp.float32).min
         scores = jnp.where(mask, scores, big_neg)
 
         # Normalize the attention weights
-        pattern = jax.nn.softmax(scores)
-        self.intermediate("pattern", pattern)
+        weights = jax.nn.softmax(scores)
+        self.intermediate("weights", weights)
 
         # Apply the attention pattern to the value tensor.
-        z = jnp.einsum("...hqk,...khd->...qhd", pattern, value)
+        z = jnp.einsum("...hqk,...khd->...qhd", weights, value)
         self.intermediate("z", z)
 
         # Apply a linear transformation to the attention output.
-        output = self.c_proj(self._merge_heads(z))
+        merged_z = self._merge_heads(z)
+        output = init_dense(name="c_proj", features=self.model_dim)(merged_z)
         return output
 
     def _qkv_intermediates(self, qkv: Tuple[Array, Array, Array]) -> bool:

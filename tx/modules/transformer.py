@@ -68,7 +68,6 @@ class TransformerBlock(nn.Module):
     head_dim: int
     model_dim: int
     mlp_dim: int
-    context_length: int
     epsilon: float = 1e-5
     init_range: float = 0.02
 
@@ -86,7 +85,6 @@ class TransformerBlock(nn.Module):
             head_dim=self.head_dim,
             model_dim=self.model_dim,
             init_range=self.init_range,
-            context_length=self.context_length,
             intermediates=self.intermediates,
         )
         self.ln_2 = LayerNorm(epsilon=self.epsilon)
@@ -149,7 +147,6 @@ class Transformer(nn.Module):
                 model_dim=self.model_dim,
                 mlp_dim=self.mlp_dim,
                 epsilon=self.layer_norm_eps,
-                context_length=self.context_length,
                 init_range=self.init_range,
                 intermediates=self.intermediates,
             )
