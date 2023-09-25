@@ -48,10 +48,8 @@ class Attention(nn.Module):
         self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
-        print(x.shape)
-        print(x.shape[:-1])
         mask = nn.make_causal_mask(jnp.ones(x.shape[:-1]), dtype="bool")
-        mask = jnp.broadcast_to(mask[..., :query_length, :query_length], scores.shape)
+        mask = jnp.broadcast_to(mask[..., :query_length, :key_length], scores.shape)
         big_neg = jnp.finfo(jnp.float32).min
         scores = jnp.where(mask, scores, big_neg)
 

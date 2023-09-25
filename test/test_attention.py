@@ -2,6 +2,11 @@ import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from jax.config import config
+
+config.update("jax_enable_x64", True)
+
+
 from jaxtyping import Array
 from optax import Params
 
@@ -18,6 +23,9 @@ from tx.modules import Attention as TxAttention, TransformerConfig
 from tx.params import tx_to_flax
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
+
+
+PRECISION = 1e-6
 
 
 @pytest.fixture
@@ -149,7 +157,7 @@ def test_tx_versus_tfs(
     batched_input = jnp.expand_dims(hidden_states, axis=0)
     tfs_output: Array = tfs_module.apply({"params": tfs_params}, batched_input)
     tx_output: Array = tx_module.apply({"params": tx_params}, batched_input)
-    assert jnp.allclose(tfs_output, tx_output, atol=1e-6, rtol=1e-6)
+    assert jnp.allclose(tfs_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
 
 def test_tx_versus_flax(
@@ -158,15 +166,38 @@ def test_tx_versus_flax(
     flax_params: Params,
     tx_params: Params,
     hidden_states: Array,
+    causal_mask: Array,
 ):
-    mask = nn.make_causal_mask(
-        jnp.ones((hidden_states.shape[0],), dtype="bool"),
-        dtype="bool",
-    )
     query_length = hidden_states.shape[0]
-    mask = mask[:, :query_length, :query_length]
     flax_output: Array = flax_module.apply(
-        {"params": flax_params}, hidden_states, hidden_states, mask=mask
+        {"params": flax_params},
+        hidden_states,
+        hidden_states,
+        mask=causal_mask[:, :query_length, :query_length],
     )
     tx_output: Array = tx_module.apply({"params": tx_params}, hidden_states)
-    assert jnp.allclose(flax_output, tx_output, atol=1e-6, rtol=1e-6)
+    assert jnp.allclose(flax_output, tx_output, atol=PRECISION, rtol=PRECISION)
+
+
+def test_tfs_versus_flax(
+    flax_module: nn.Module,
+    tfs_module: TFSAttention,
+    flax_params: Params,
+    tfs_params: Params,
+    hidden_states: Array,
+    causal_mask: Array,
+):
+    batched_input = jnp.expand_dims(hidden_states, axis=0)
+    query_length = hidden_states.shape[0]
+    flax_output: Array = flax_module.apply(
+        {"params": flax_params},
+        inputs_q=batched_input,
+        inputs_kv=batched_input,
+        mask=causal_mask[:, :query_length, :query_length],
+    )
+    tfs_output: Array = tfs_module.apply({"params": tfs_params}, batched_input)
+    assert jnp.allclose(flax_output, tfs_output, atol=PRECISION, rtol=PRECISION)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])
