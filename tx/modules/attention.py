@@ -24,7 +24,9 @@ class Attention(nn.Module):
         return False
 
     @nn.compact
-    def __call__(self, x: Float[Array, "seq embed"]) -> Float[Array, "seq embed"]:
+    def __call__(
+        self, x: Float[Array, "... seq embed"]
+    ) -> Float[Array, "... seq embed"]:
         init_dense = partial(
             nn.DenseGeneral,
             kernel_init=jax.nn.initializers.normal(stddev=self.init_range),
@@ -46,8 +48,10 @@ class Attention(nn.Module):
         self.intermediate("scores", scores)
 
         # Apply the causal mask to the attention weights.
-        mask = nn.make_causal_mask(jnp.ones((x.shape[0],)), dtype="bool")
-        mask = mask[:, :query_length, :key_length]
+        print(x.shape)
+        print(x.shape[:-1])
+        mask = nn.make_causal_mask(jnp.ones(x.shape[:-1]), dtype="bool")
+        mask = jnp.broadcast_to(mask[..., :query_length, :query_length], scores.shape)
         big_neg = jnp.finfo(jnp.float32).min
         scores = jnp.where(mask, scores, big_neg)
 
@@ -75,7 +79,7 @@ class Attention(nn.Module):
         return map(self._split_heads, jnp.split(states, 3, axis=-1))
 
     def _split_heads(self, states: Array):
-        return states.reshape((states.shape[0], self.num_heads, self.head_dim))
+        return states.reshape(states.shape[:-1] + (self.num_heads, self.head_dim))
 
     def _merge_heads(self, states: Array):
-        return states.reshape((states.shape[0], self.model_dim))
+        return states.reshape(states.shape[:-2] + (self.model_dim,))
