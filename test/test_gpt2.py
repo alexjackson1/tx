@@ -13,7 +13,7 @@ from tx.modules import (
     LayerNorm,
     Embed,
     PosEmbed,
-    Attention,
+    MultiHeadAttention,
     MLP,
     TransformerBlock,
     Unembed,
@@ -53,7 +53,7 @@ def test_pos_embed(gpt2_params):
 
 
 def test_attention(gpt2_params):
-    model = Attention(num_heads=12, head_dim=64, model_dim=768, context_length=1024)
+    model = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
     variables = {"params": gpt2_params["block_0"]["attn"]}
     input_data = jnp.ones((1024, 768), dtype=jnp.float32)
     output: Array = model.apply(variables, input_data)
@@ -69,9 +69,7 @@ def test_mlp(gpt2_params):
 
 
 def test_transformer_block(gpt2_params):
-    model = TransformerBlock(
-        num_heads=12, head_dim=64, model_dim=768, mlp_dim=3072, context_length=1024
-    )
+    model = TransformerBlock(num_heads=12, head_dim=64, model_dim=768, mlp_dim=3072)
     variables = {"params": gpt2_params["block_0"]}
     input_data = jnp.ones((1024, 768), dtype=jnp.float32)
     output: Array = model.apply(variables, input_data)

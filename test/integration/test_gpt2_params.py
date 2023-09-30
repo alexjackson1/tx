@@ -1,7 +1,10 @@
 import sys, os
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import jax.config
+
+jax.config.update("jax_enable_x64", True)
 
 from jaxtyping import Array
 
@@ -49,23 +52,39 @@ def hf_apply(module: nn.Module, params, input: Array) -> Array:
 
 
 def tx_embed(params, model_dim: int, vocab_dim: int, tokens: Array) -> Array:
-    module = Embed(features=model_dim, num_embeddings=vocab_dim)
+    module = Embed(
+        features=model_dim,
+        num_embeddings=vocab_dim,
+        param_dtype=jnp.float64,
+    )
     return tx_apply(module, params["embed"], tokens)
 
 
 def hf_embed(params, model_dim: int, vocab_dim: int, tokens: Array) -> Array:
-    module = nn.Embed(vocab_dim, model_dim, embedding_init=INIT_FN, dtype=jnp.float32)
+    module = nn.Embed(
+        vocab_dim,
+        model_dim,
+        embedding_init=INIT_FN,
+        param_dtype=jnp.float64,
+    )
     return hf_apply(module, params["transformer"]["wte"], tokens)
 
 
 def tx_pos_embed(params, model_dim: int, context_length: int, tokens: Array) -> Array:
-    module = PosEmbed(features=model_dim, num_embeddings=context_length)
+    module = PosEmbed(
+        features=model_dim,
+        num_embeddings=context_length,
+        param_dtype=jnp.float64,
+    )
     return tx_apply(module, params["pos_embed"], tokens)
 
 
 def hf_pos_embed(params, model_dim: int, context_length: int, tokens: Array) -> Array:
     module = nn.Embed(
-        context_length, model_dim, embedding_init=INIT_FN, dtype=jnp.float32
+        context_length,
+        model_dim,
+        embedding_init=INIT_FN,
+        param_dtype=jnp.float64,
     )
     return hf_apply(module, params["transformer"]["wpe"], tokens)
 
@@ -77,7 +96,6 @@ def tx_transformer_block(
     head_dim: int,
     model_dim: int,
     mlp_dim: int,
-    context_length: int,
     input: Array,
 ) -> Array:
     module = TransformerBlock(
@@ -85,13 +103,17 @@ def tx_transformer_block(
         head_dim=head_dim,
         model_dim=model_dim,
         mlp_dim=mlp_dim,
-        context_length=context_length,
+        dtype=jnp.float64,
+        param_dtype=jnp.float64,
     )
     return tx_apply(module, params[name], input)
 
 
 def hf_transformer_block(params, name: str, input: Array) -> Array:
-    module = FlaxGPT2Block(GPT2Config.from_pretrained("gpt2"))
+    module = FlaxGPT2Block(
+        GPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
+        dtype=jnp.float64,
+    )
     input = jnp.expand_dims(input, axis=0)
     variables = {"params": params["transformer"]["h"][name]}
     output = module.apply(variables, input)[0]
@@ -99,17 +121,22 @@ def hf_transformer_block(params, name: str, input: Array) -> Array:
 
 
 def tx_ln_f(gpt2_params, input: Array) -> Array:
-    module = LayerNorm(epsilon=1e-5)
+    module = LayerNorm(epsilon=1e-5, dtype=jnp.float64, param_dtype=jnp.float64)
     return tx_apply(module, gpt2_params["ln_f"], input)
 
 
 def hf_ln_f(gpt2_params, input: Array) -> Array:
-    module = nn.LayerNorm(epsilon=1e-5)
+    module = nn.LayerNorm(epsilon=1e-5, dtype=jnp.float64, param_dtype=jnp.float64)
     return hf_apply(module, gpt2_params["transformer"]["ln_f"], input)
 
 
 def tx_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Array:
-    module = Unembed(features=model_dim, num_embeddings=vocab_dim)
+    module = Unembed(
+        features=model_dim,
+        num_embeddings=vocab_dim,
+        dtype=jnp.float64,
+        param_dtype=jnp.float64,
+    )
     return tx_apply(module, gpt2_params["unembed"], input)
 
 
@@ -119,7 +146,8 @@ def hf_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Arr
         model_dim,
         kernel_init=INIT_FN,
         bias_init=nn.initializers.zeros,
-        dtype=jnp.float32,
+        dtype=jnp.float64,
+        param_dtype=jnp.float64,
         precision=None,
     )
     params = {
@@ -156,7 +184,7 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
     # Transformer blocks
     next_input = tx_embed_out + tx_pos_embed_out
     for i in range(gpt2_config.num_layers):
-        ## Transformer bl`ock
+        ## Transformer block
         tx_block_out = tx_transformer_block(
             gpt2_params,
             f"block_{i}",
@@ -164,12 +192,11 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
             head_dim=gpt2_config.head_dim,
             model_dim=gpt2_config.model_dim,
             mlp_dim=gpt2_config.mlp_dim,
-            context_length=gpt2_config.context_length,
             input=next_input,
         )
         hf_block_out = hf_transformer_block(gpt2._params, f"{i}", next_input)
         assert tx_block_out.shape == hf_block_out.shape
-        assert jnp.allclose(tx_block_out, hf_block_out, atol=1e-2, rtol=1e-2)
+        assert jnp.allclose(tx_block_out, hf_block_out, atol=1e-6, rtol=1e-6)
 
         ## Update inputs
         next_input = tx_block_out
