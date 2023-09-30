@@ -1,44 +1,11 @@
-from typing import Dict, Union
-from jaxtyping import Array
-
 import jax.numpy as jnp
+from optax import Params
 
 from tx.modules import TransformerConfig
 
 
-ArrayOrDict = Union[Array, Dict[str, "ArrayOrDict"]]
-Params = Dict[str, ArrayOrDict]
-
-
-def flax_attention_params(cfg: TransformerConfig, params: Params) -> Params:
-    model_dim, num_heads, head_dim = (cfg.model_dim, cfg.num_heads, cfg.head_dim)
-
-    def split_attn_params(c_attn: Params) -> Params:
-        rs_kernel = lambda x: jnp.reshape(x, (model_dim, num_heads, head_dim))
-        q, k, v = jnp.split(c_attn["kernel"], 3, axis=-1)
-        q, k, v = rs_kernel(q), rs_kernel(k), rs_kernel(v)
-
-        rs_bias = lambda x: jnp.reshape(x, (num_heads, head_dim))
-        q_b, k_b, v_b = jnp.split(c_attn["bias"], 3, axis=-1)
-        q_b, k_b, v_b = rs_bias(q_b), rs_bias(k_b), rs_bias(v_b)
-
-        return {
-            "query": {"kernel": q, "bias": q_b},
-            "key": {"kernel": k, "bias": k_b},
-            "value": {"kernel": v, "bias": v_b},
-        }
-
-    def reshape_proj_params(c_proj: Params) -> Params:
-        out_k = jnp.reshape(c_proj["kernel"], (num_heads, head_dim, model_dim))
-        out_b = jnp.reshape(c_proj["bias"], (model_dim,))
-        return {"out": {"kernel": out_k, "bias": out_b}}
-
-    attn = params["block_0"]["attn"]
-    c_attn, c_proj = attn["c_attn"], attn["c_proj"]
-    return {**split_attn_params(c_attn), **reshape_proj_params(c_proj)}
-
-
 def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:
+    """Convert `tx` attention parameters to `tfs` attention parameters."""
     model_dim, num_heads, head_dim = (cfg.model_dim, cfg.num_heads, cfg.head_dim)
 
     def split_attn_params(c_attn: Params) -> Params:
@@ -63,18 +30,22 @@ def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:
 
 
 def tfs_layer_norm_params(_cfg, params: Params) -> Params:
+    """Convert `tx` layer norm parameters to `tfs` layer norm parameters."""
     return {"w": params["scale"], "b": params["bias"]}
 
 
 def tfs_embed_params(_cfg, params: Params) -> Params:
+    """Convert `tx` embedding parameters to `tfs` embedding parameters."""
     return {"W_E": params["embedding"]}
 
 
 def tfs_pos_embed_params(_cfg, params: Params) -> Params:
+    """Convert `tx` positional embedding parameters to `tfs` positional embedding parameters."""
     return {"W_pos": params["embedding"]}
 
 
 def tfs_mlp_params(_cfg, params: Params) -> Params:
+    """Convert `tx` mlp parameters to `tfs` mlp parameters."""
     return {
         "W_in": params["fc_1"]["kernel"],
         "W_out": params["proj"]["kernel"],
@@ -84,6 +55,7 @@ def tfs_mlp_params(_cfg, params: Params) -> Params:
 
 
 def tfs_block_params(cfg, params: Params) -> Params:
+    """Convert `tx` block parameters to `tfs` block parameters."""
     return {
         "ln1": tfs_layer_norm_params(cfg, params["ln_1"]),
         "attn": tfs_attention_params(cfg, params["attn"]),
@@ -93,10 +65,20 @@ def tfs_block_params(cfg, params: Params) -> Params:
 
 
 def tfs_unembed_params(_cfg, params: Params) -> Params:
+    """Convert `tx` unembed parameters to `tfs` unembed parameters."""
     return {"W_U": params["kernel"], "b_U": params["bias"]}
 
 
 def tfs_transformer_params(cfg: TransformerConfig, params: Params) -> Params:
+    """Convert `tx` transformer parameters to `tfs` transformer parameters.
+
+    Args:
+        cfg: The transformer configuration.
+        params: The tx transformer parameters.
+
+    Returns:
+        Parameters for the 'Transformer from Scratch' model.
+    """
     return {
         "embed": tfs_embed_params(cfg, params["embed"]),
         "pos_embed": tfs_pos_embed_params(cfg, params["pos_embed"]),

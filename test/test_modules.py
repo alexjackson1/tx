@@ -13,7 +13,7 @@ from tx.modules import (
     TransformerConfig,
     Transformer,
     MLP,
-    Attention,
+    MultiHeadAttention,
     Embed,
     LayerNorm,
     PosEmbed,
@@ -115,13 +115,13 @@ def test_pos_embed_apply():
 
 
 def test_attention_init():
-    layer = Attention(num_heads=12, head_dim=64, model_dim=768)
+    layer = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
     shape = (4, 768)
     init(layer, shape)
 
 
 def test_attention_apply():
-    layer = Attention(num_heads=12, head_dim=64, model_dim=768)
+    layer = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
     shape = (4, 768)
     variables = init(layer, shape)
     output = apply_float(layer, variables, shape)

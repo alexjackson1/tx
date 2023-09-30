@@ -19,7 +19,7 @@ import flax.linen as nn
 from tx.models import PretrainedGPT2Model
 from examples.params import tfs_attention_params
 
-from tx.modules import Attention as TxAttention, TransformerConfig
+from tx.modules import MultiHeadAttention as TxAttention, TransformerConfig
 from tx.params import tx_to_flax
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
@@ -43,7 +43,7 @@ def tx_module(config: TransformerConfig) -> TxAttention:
     return TxAttention(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
-        model_dim=config.model_dim,
+        features=config.model_dim,
         init_range=config.init_range,
     )
 

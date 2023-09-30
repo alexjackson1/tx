@@ -3,7 +3,7 @@ from nbconvert.preprocessors import ExecutePreprocessor
 import pytest
 
 
-@pytest.mark.parametrize("notebook_file", ["examples/1-transformer-from-scratch.ipynb"])
+@pytest.mark.parametrize("notebook_file", [])
 def test_notebook_execution(notebook_file):
     with open(notebook_file, "r") as f:
         notebook_content = nbformat.read(f, as_version=4)

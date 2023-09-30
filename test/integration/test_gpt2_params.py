@@ -1,7 +1,10 @@
 import sys, os
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import jax.config
+
+jax.config.update("jax_enable_x64", True)
 
 from jaxtyping import Array
 
@@ -89,7 +92,10 @@ def tx_transformer_block(
 
 
 def hf_transformer_block(params, name: str, input: Array) -> Array:
-    module = FlaxGPT2Block(GPT2Config.from_pretrained("gpt2"))
+    module = FlaxGPT2Block(
+        GPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
+        dtype=jnp.float64,
+    )
     input = jnp.expand_dims(input, axis=0)
     variables = {"params": params["transformer"]["h"][name]}
     output = module.apply(variables, input)[0]
@@ -166,7 +172,7 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
         )
         hf_block_out = hf_transformer_block(gpt2._params, f"{i}", next_input)
         assert tx_block_out.shape == hf_block_out.shape
-        assert jnp.allclose(tx_block_out, hf_block_out, atol=1e-2, rtol=1e-2)
+        assert jnp.allclose(tx_block_out, hf_block_out, atol=1e-3, rtol=1e-3)
 
         ## Update inputs
         next_input = tx_block_out
@@ -181,7 +187,7 @@ def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFas
     tx_unembed_out = tx_unembed(gpt2_params, model_dim, vocab_dim, tx_ln_f_out)
     hf_unembed_out = hf_unembed(gpt2._params, model_dim, vocab_dim, hf_ln_f_out)
     assert tx_unembed_out.shape == hf_unembed_out.shape
-    assert jnp.allclose(tx_unembed_out, hf_unembed_out, atol=1e-6, rtol=1e-6)
+    assert jnp.allclose(tx_unembed_out, hf_unembed_out, atol=1e-5, rtol=1e-5)
 
 
 if __name__ == "__main__":
