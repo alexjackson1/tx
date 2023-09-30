@@ -1,10 +1,11 @@
-from typing import Iterable, List
-from jaxtyping import Array, Float
+from typing import Iterable, List, Optional
+from jaxtyping import Array, Float, Int
 
 import dataclasses
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import flax.linen as nn
 import flax.struct as struct
 
@@ -27,6 +28,8 @@ class TransformerConfig:
         layer_norm_eps: The epsilon value to in `LayerNorm` layers.
         init_range: The range of the normal distribution used to initialize the
             weights.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
     """
 
     vocab_dim: int = 50257
@@ -47,6 +50,9 @@ class TransformerConfig:
     """The epsilon value for `LayerNorm` layers."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
 
 
 class MLP(nn.Module):
@@ -58,6 +64,8 @@ class MLP(nn.Module):
         init_range: The standard deviation of the normal distribution used to
             initialize the linear transformations.
         use_bias: Whether to include a bias term in the linear transformations.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
         intermediates: A list of intermediate arrays to store in the module's
             state dictionary.
 
@@ -81,6 +89,9 @@ class MLP(nn.Module):
     init_range: float = 0.02
     """The standard deviation of the normal distribution used to initialize the
     linear transformations."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
 
     intermediates: List[str] = struct.field(default_factory=list)
     """A list of intermediate arrays to store in the module's state dictionary."""
@@ -102,11 +113,16 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, x: Float[Array, "S F1"]) -> Float[Array, "S FN"]:
         """Applies the MLP module to the input array."""
+        dtype = self.dtype or jnp.result_type(x)
+        x = jnp.asarray(x, dtype)
+
         init_dense = partial(
             nn.DenseGeneral,
             axis=-1,
             kernel_init=jax.nn.initializers.normal(stddev=self.init_range),
             bias_init=jax.nn.initializers.zeros,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
         )
 
         for i, features in enumerate(self.features[:-1]):
@@ -131,6 +147,8 @@ class TransformerBlock(nn.Module):
         epsilon: The epsilon value to in `LayerNorm` layers.
         init_range: The range of the normal distribution used to initialize the
             weights.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
         intermediates: A list of intermediate arrays to store in the module's
             state dictionary.
 
@@ -152,8 +170,6 @@ class TransformerBlock(nn.Module):
     2. `attention_output`: The output of the multi-headed attention.
     3. `ln_2_output`: The output of the second layer normalization.
     4. `mlp_output`: The output of the multi-layer perceptron.
-    5. `final_residual`: The output of the second residual connection.
-    6. `final_output`: The output of the final layer normalization.
     """
 
     num_heads: int
@@ -168,6 +184,10 @@ class TransformerBlock(nn.Module):
     """The epsilon value for `LayerNorm` layers."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     intermediates: List[str] = struct.field(default_factory=list)
 
@@ -180,32 +200,49 @@ class TransformerBlock(nn.Module):
     @nn.compact
     def __call__(self, x: Float[Array, "S F"]) -> Float[Array, "S F"]:
         """Applies the transformer block module to the input array."""
-        x_norm = LayerNorm(name="ln_1", epsilon=self.epsilon)(x)
-        self.intermediate("ln_1_output", x_norm)
-        x = (
-            MultiHeadAttention(
-                name="attn",
-                num_heads=self.num_heads,
-                head_dim=self.head_dim,
-                features=self.model_dim,
-                init_range=self.init_range,
-                intermediates=self.intermediates,
-            )(x_norm)
-            + x
-        )
-        self.intermediate("attention_output", x)
+        dtype = self.dtype or jnp.result_type(x)
+        x = jnp.asarray(x, dtype)
 
-        x_norm = LayerNorm(name="ln_2", epsilon=self.epsilon)(x)
-        self.intermediate("ln_2_output", x_norm)
-        x = (
-            MLP(
-                name="mlp",
-                features=[self.mlp_dim, self.model_dim],
-                init_range=self.init_range,
-                intermediates=self.intermediates,
-            )(x_norm)
-            + x
+        init_layer_norm = partial(
+            LayerNorm, epsilon=self.epsilon, dtype=dtype, param_dtype=self.param_dtype
         )
+
+        # First layer normalisation
+        x_norm = init_layer_norm(name="ln_1")(x)
+        self.intermediate("ln_1_output", x_norm)
+
+        # Multi-headed attention
+        attn_output = MultiHeadAttention(
+            name="attn",
+            num_heads=self.num_heads,
+            head_dim=self.head_dim,
+            features=self.model_dim,
+            init_range=self.init_range,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
+            intermediates=self.intermediates,
+        )(x_norm)
+        self.intermediate("attention_output", attn_output)
+
+        # First residual connection
+        x = attn_output + x
+
+        # Second layer normalisation
+        x_norm = init_layer_norm(name="ln_2")(x)
+        self.intermediate("ln_2_output", x_norm)
+
+        # MLP
+        mlp_out = MLP(
+            name="mlp",
+            features=[self.mlp_dim, self.model_dim],
+            init_range=self.init_range,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
+            intermediates=self.intermediates,
+        )(x_norm)
+
+        # Second residual connection
+        x = mlp_out + x
         return x
 
 
@@ -223,6 +260,8 @@ class Transformer(nn.Module):
         layer_norm_eps: The epsilon value to in `LayerNorm` layers.
         init_range: The range of the normal distribution used to initialize the
             weights.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
         intermediates: A list of intermediate arrays to store in the module's
             state dictionary.
 
@@ -243,8 +282,7 @@ class Transformer(nn.Module):
     1. `embedding`: The output of the text embedding.
     2. `positional_embedding`: The output of the positional embedding.
     3. `residual`: The output of the residual connection.
-    4. `final_residual`: The output of the final residual connection.
-    5. `final_output`: The output of the final layer normalization.
+    4. `final_output`: The output of the final layer normalization.
     """
 
     model_dim: int = 768
@@ -265,6 +303,10 @@ class Transformer(nn.Module):
     """The number of layers of transformer blocks in the model."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     intermediates: List[str] = struct.field(default_factory=list)
     """A list of intermediate arrays to store in the module's state dictionary."""
@@ -281,13 +323,16 @@ class Transformer(nn.Module):
         return cls(**config.__dict__, **kwargs)
 
     @nn.compact
-    def __call__(self, tokens: Float[Array, "... S"]) -> Float[Array, "... S V"]:
+    def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S V"]:
         """Applies the transformer module to the input array."""
+        dtype = jnp.promote_types(self.dtype, jnp.float32)
+
         embed = Embed(
             name="embed",
             features=self.model_dim,
             num_embeddings=self.vocab_dim,
             init_range=self.init_range,
+            param_dtype=self.param_dtype,
         )(tokens)
         self.intermediate("embedding", embed)
 
@@ -296,6 +341,7 @@ class Transformer(nn.Module):
             features=self.model_dim,
             num_embeddings=self.context_length,
             init_range=self.init_range,
+            param_dtype=self.param_dtype,
         )(tokens)
         self.intermediate("positional_embedding", pos_embed)
 
@@ -311,12 +357,19 @@ class Transformer(nn.Module):
                 mlp_dim=self.mlp_dim,
                 epsilon=self.layer_norm_eps,
                 init_range=self.init_range,
+                dtype=dtype,
+                param_dtype=self.param_dtype,
                 intermediates=self.intermediates,
             )(x)
 
-        self.intermediate("final_residual", x)
+        self.intermediate("residual", x)
 
-        x = LayerNorm(name="ln_f", epsilon=self.layer_norm_eps)(x)
+        x = LayerNorm(
+            name="ln_f",
+            epsilon=self.layer_norm_eps,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
+        )(x)
         self.intermediate("final_output", x)
 
         logits = Unembed(
@@ -324,5 +377,7 @@ class Transformer(nn.Module):
             features=self.model_dim,
             num_embeddings=self.vocab_dim,
             init_range=self.init_range,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
         )(x)
         return logits

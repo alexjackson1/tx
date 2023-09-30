@@ -1,3 +1,4 @@
+from typing import Optional
 from jaxtyping import Array, Float, Int
 
 import jax
@@ -10,6 +11,8 @@ class LayerNorm(nn.Module):
 
     Attributes:
         epsilon: A small value used to prevent division by zero.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, features).
@@ -27,15 +30,36 @@ class LayerNorm(nn.Module):
 
     epsilon: float = 1e-5
     """A small value used to prevent division by zero."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     @nn.compact
     def __call__(self, x: Array) -> Array:
+        """Normalizes the input array using the mean and variance."""
+        # Convert to JAX array
+        dtype = self.dtype or jnp.result_type(x)
+        x = jnp.asarray(x, dtype)
+
+        # Compute statistics
         x_mean = jnp.mean(x, axis=-1, keepdims=True)
         x_var = jnp.var(x, axis=-1, keepdims=True)
         x = (x - x_mean) / jnp.sqrt(x_var + self.epsilon)
 
-        scale = self.param("scale", jax.nn.initializers.ones, (x.shape[-1],))
-        bias = self.param("bias", jax.nn.initializers.zeros, (x.shape[-1],))
+        # Apply scale and bias
+        scale = self.param(
+            "scale",
+            jax.nn.initializers.ones,
+            (x.shape[-1],),
+            self.param_dtype,
+        )
+        bias = self.param(
+            "bias",
+            jax.nn.initializers.zeros,
+            (x.shape[-1],),
+            self.param_dtype,
+        )
         x = x * scale + bias
 
         return x
@@ -49,6 +73,8 @@ class Embed(nn.Module):
         features: The dimensionality of the embeddings.
         init_range: The standard deviation of the normal distribution used to
             initialize the embeddings.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len).
@@ -65,14 +91,18 @@ class Embed(nn.Module):
     init_range: float = 0.02
     """The standard deviation of the normal distribution used to initialize the
     embeddings."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     @nn.compact
     def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S F"]:
         """Looks up the embeddings for each token in the input array."""
+        # Lookup embeddings
         embedding = self.param(
             "embedding",
             nn.initializers.normal(self.init_range),
             (self.num_embeddings, self.features),
+            self.param_dtype,
         )
         return jnp.take(embedding, tokens, axis=0)
 
@@ -85,6 +115,8 @@ class PosEmbed(nn.Module):
         features: The dimensionality of the embeddings.
         init_range: The standard deviation of the normal distribution used to
             initialize the embeddings.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len).
@@ -101,14 +133,18 @@ class PosEmbed(nn.Module):
     init_range: float = 0.02
     """The standard deviation of the normal distribution used to initialize the
     embeddings."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     @nn.compact
     def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S F"]:
         """Computes the positional embeddings for each token in the input array."""
+        # Lookup embeddings
         embedding = self.param(
             "embedding",
             nn.initializers.normal(self.init_range),
             (self.num_embeddings, self.features),
+            self.param_dtype,
         )
         return embedding[: tokens.shape[-1]]
 
@@ -121,6 +157,8 @@ class Unembed(nn.Module):
         num_embeddings: The number of embeddings.
         init_range: The standard deviation of the normal distribution used to
             initialize the embeddings.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len, features).
@@ -137,14 +175,29 @@ class Unembed(nn.Module):
     init_range: float = 0.02
     """The standard deviation of the normal distribution used to initialize the
     embeddings."""
+    dtype: jnp.dtype = jnp.float32
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     @nn.compact
     def __call__(self, x: Float[Array, "... S F"]) -> Float[Array, "... S V"]:
         """Computes the logits for each token in the input array."""
+        # Convert to JAX array
+        dtype = self.dtype or jnp.result_type(x)
+        x = jnp.asarray(x, dtype)
+
+        # Compute logits
         kernel = self.param(
             "kernel",
             nn.initializers.normal(self.init_range),
             (self.features, self.num_embeddings),
+            self.param_dtype,
         )
-        bias = self.param("bias", jax.nn.initializers.zeros, (self.num_embeddings,))
+        bias = self.param(
+            "bias",
+            jax.nn.initializers.zeros,
+            (self.num_embeddings,),
+            self.param_dtype,
+        )
         return jnp.einsum("...sf,fv->...sv", x, kernel) + bias

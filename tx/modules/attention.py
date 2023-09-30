@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from jaxtyping import Array, Float
 
 from functools import partial
@@ -19,6 +19,8 @@ class MultiHeadAttention(nn.Module):
         init_range: The standard deviation of the normal distribution used to
             initialize the linear transformations.
         use_bias: Whether to include a bias term in the linear transformations.
+        dtype: The dtype of the input array.
+        param_dtype: The dtype of the parameters.
         intermediates: A list of intermediate arrays to store in the module's
             state dictionary.
 
@@ -61,6 +63,10 @@ class MultiHeadAttention(nn.Module):
     linear transformations."""
     use_bias: bool = True
     """Whether to include a bias term in the linear transformations."""
+    dtype: Optional[jnp.dtype] = None
+    """The dtype of the input array."""
+    param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
     intermediates: List[str] = struct.field(default_factory=list)
     """A list of intermediate arrays to store in the module's state dictionary."""
@@ -83,11 +89,16 @@ class MultiHeadAttention(nn.Module):
     @nn.compact
     def __call__(self, x: Float[Array, "... S F"]) -> Float[Array, "... S F"]:
         """Applies the multi-headed attention module to the input array."""
+        dtype = self.dtype or jnp.result_type(x)
+        x = jnp.asarray(x, dtype)
+
         init_dense = partial(
             nn.DenseGeneral,
             kernel_init=jax.nn.initializers.normal(stddev=self.init_range),
             bias_init=jax.nn.initializers.zeros,
             use_bias=self.use_bias,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
         )
 
         # Apply a linear transformation to the input tensor.
@@ -106,7 +117,7 @@ class MultiHeadAttention(nn.Module):
         # Apply the causal mask to the attention weights.
         mask = nn.make_causal_mask(jnp.ones(x.shape[:-1]), dtype="bool")
         mask = mask[..., :query_length, :key_length]
-        big_neg = jnp.finfo(jnp.float64).min
+        big_neg = jnp.finfo(dtype).min
         scores = jnp.where(mask, scores, big_neg)
 
         # Normalise the attention weights

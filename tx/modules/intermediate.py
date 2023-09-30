@@ -32,8 +32,6 @@ class Intermediate(Enum):
     """The output of the MLP before the activation function."""
     MLP_POST_ACTIVATION = "post_activation"
     """The output of the MLP after the activation function."""
-    FINAL_RESIDUAL = "final_residual"
-    """The final residual state."""
     FINAL_OUTPUT = "final_output"
     """The final output of the model (prior to unembedding)."""
 
