@@ -90,17 +90,17 @@ def causal_mask(hidden_states: Array) -> Array:
 
 
 def test_tx_attention_works(
-    tx_module: TxAttention, tx_params: Params, hidden_states: Array
+    tx_module: TxAttention, tx_params: Params, hidden_states: Array, causal_mask: Array
 ):
-    output: Array = tx_module.apply({"params": tx_params}, hidden_states)
+    output: Array = tx_module.apply({"params": tx_params}, hidden_states, causal_mask)
     assert output.shape == hidden_states.shape
 
 
 def test_tx_attention_works_with_batches(
-    tx_module: TxAttention, tx_params: Params, hidden_states: Array
+    tx_module: TxAttention, tx_params: Params, hidden_states: Array, causal_mask: Array
 ):
     batched_input = jnp.expand_dims(hidden_states, axis=0)
-    output: Array = tx_module.apply({"params": tx_params}, batched_input)
+    output: Array = tx_module.apply({"params": tx_params}, batched_input, causal_mask)
     assert output.shape[1:] == hidden_states.shape
 
 
@@ -153,10 +153,13 @@ def test_tx_versus_tfs(
     tfs_params: Params,
     tx_params: Params,
     hidden_states: Array,
+    causal_mask: Array,
 ):
     batched_input = jnp.expand_dims(hidden_states, axis=0)
     tfs_output: Array = tfs_module.apply({"params": tfs_params}, batched_input)
-    tx_output: Array = tx_module.apply({"params": tx_params}, batched_input)
+    tx_output: Array = tx_module.apply(
+        {"params": tx_params}, batched_input, causal_mask
+    )
     assert jnp.allclose(tfs_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
 
@@ -175,7 +178,9 @@ def test_tx_versus_flax(
         hidden_states,
         mask=causal_mask[:, :query_length, :query_length],
     )
-    tx_output: Array = tx_module.apply({"params": tx_params}, hidden_states)
+    tx_output: Array = tx_module.apply(
+        {"params": tx_params}, hidden_states, causal_mask
+    )
     assert jnp.allclose(flax_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
 

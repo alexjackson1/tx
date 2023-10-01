@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
+from tx.modules.hooks import HookMap, HookPoint, apply_hooks
+
 
 class LayerNorm(nn.Module):
     """Layer normalization module.
@@ -36,7 +38,7 @@ class LayerNorm(nn.Module):
     """The dtype of the parameters."""
 
     @nn.compact
-    def __call__(self, x: Array) -> Array:
+    def __call__(self, x: Array, hooks: Optional[HookMap] = None) -> Array:
         """Normalizes the input array using the mean and variance."""
         # Convert to JAX array
         dtype = self.dtype or jnp.result_type(x)
@@ -45,7 +47,10 @@ class LayerNorm(nn.Module):
         # Compute statistics
         x_mean = jnp.mean(x, axis=-1, keepdims=True)
         x_var = jnp.var(x, axis=-1, keepdims=True)
-        x = (x - x_mean) / jnp.sqrt(x_var + self.epsilon)
+        x_std = jnp.sqrt(x_var + self.epsilon)
+
+        x = (x - x_mean) / x_std
+        x = apply_hooks(HookPoint.LN_STD, hooks, x)
 
         # Apply scale and bias
         scale = self.param(
@@ -61,6 +66,7 @@ class LayerNorm(nn.Module):
             self.param_dtype,
         )
         x = x * scale + bias
+        x = apply_hooks(HookPoint.LN_NORMALIZED, hooks, x)
 
         return x
 

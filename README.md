@@ -57,7 +57,7 @@ The API of this library is intended to (eventually) expose the same functionalit
 
 ### Similarities
 
-1. The library seeks to model Transformer architectures and enable users to inspect intermediate activations and other hidden information (e.g. attention weights).
+1. The library seeks to model Transformer architectures and enable users to inspect and intervene on intermediate activations and other hidden information (e.g. attention weights).
 2. Modules are written 'from scratch', attempting to eliminate abstractions that obfuscate the underlying mathematics.
 3. GPU acceleration is supported as a first-class feature.
 
@@ -65,6 +65,7 @@ The API of this library is intended to (eventually) expose the same functionalit
 
 1. The transformer architecture and related algorithms use JAX, instead of PyTorch, for better performance and hardware acceleration.
 2. In-keeping with the functional paradigm of JAX, the library and API are designed to be more functional in nature and embrace the [Flax philosophy](https://flax.readthedocs.io/en/latest/philosophy.html).
+   1. This avoids the use of hooks as global state in TransformerLens.
 3. Module definitions use a 'single batch' style made possible by `jax.vmap` (reducing cognitive load and improving readability).
 
 ## License

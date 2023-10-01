@@ -116,15 +116,16 @@ def test_pos_embed_apply():
 
 def test_attention_init():
     layer = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
-    shape = (4, 768)
-    init(layer, shape)
+    mask = nn.make_causal_mask(jnp.ones(4), dtype="bool")
+    layer.init(RNG, jnp.ones((4, 768), dtype=jnp.float32), mask)
 
 
 def test_attention_apply():
     layer = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
     shape = (4, 768)
-    variables = init(layer, shape)
-    output = apply_float(layer, variables, shape)
+    mask = nn.make_causal_mask(jnp.ones(4), dtype="bool")
+    variables = layer.init(RNG, jnp.ones(shape, dtype=jnp.float32), mask)
+    output: Array = layer.apply(variables, jr.uniform(RNG, shape), mask)
     assert output.shape == shape
 
 

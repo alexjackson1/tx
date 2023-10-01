@@ -1,11 +1,10 @@
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Union
 from jaxtyping import Int, Array, Float
 
 from transformers import PreTrainedTokenizerBase
 
+from tx.modules import Transformer, TransformerConfig, HookMap
 from tx.models.gpt2 import PretrainedGPT2Model
-from tx.modules import Transformer
-from tx.modules.transformer import TransformerConfig
 
 
 DArray = Union[Dict[str, Array], Dict[str, "DArray"]]
@@ -100,21 +99,14 @@ class GenerativeModel:
 
         return list(map(self.to_str, tokens))
 
-    def run_with_intermediates(
-        self, inputs: Int[Array, "seq"], intermediates: List[str] = []
-    ) -> Tuple[Float[Array, "seq vocab"], Dict[str, Union[Array, Dict[str, Array]]]]:
-        if self.variables is None:
-            raise ValueError("Variables not provided")
-
-        transformer = Transformer.from_config(self.config, intermediates=intermediates)
-        return transformer.apply(self.variables, inputs, mutable=["intermediates"])
-
-    def run(self, inputs: Int[Array, "seq"]) -> Float[Array, "seq vocab"]:
+    def run(
+        self, inputs: Int[Array, "seq"], hooks: Optional[HookMap]
+    ) -> Float[Array, "seq vocab"]:
         if self.variables is None:
             raise ValueError("Variables not provided")
 
         transformer = Transformer.from_config(self.config)
-        return transformer.apply(self.variables, inputs)
+        return transformer.apply(self.variables, inputs, hooks)
 
     def __call__(self, inputs: Int[Array, "seq"]) -> Float[Array, "seq vocab"]:
         return self.run(inputs)

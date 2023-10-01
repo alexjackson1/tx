@@ -1,4 +1,4 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, Optional
 from jaxtyping import Array, Float, Int
 
 import dataclasses
@@ -7,7 +7,8 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-import flax.struct as struct
+
+from tx.modules.hooks import HookMap, HookPoint, apply_hooks
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
@@ -66,8 +67,6 @@ class MLP(nn.Module):
         use_bias: Whether to include a bias term in the linear transformations.
         dtype: The dtype of the input array.
         param_dtype: The dtype of the parameters.
-        intermediates: A list of intermediate arrays to store in the module's
-            state dictionary.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len, features[0]).
@@ -78,10 +77,6 @@ class MLP(nn.Module):
     2. Applies the GELU activation function to the linear transformation.
     3. Repeats according to the number of layers in the module.
     4. Applies a linear transformation to the output of the GELU activation.
-
-    Intermediate Arrays:
-    1. `pre_activation`: The output of the first linear transformation.
-    2. `post_activation`: The output of the GELU activation.
     """
 
     features: Iterable[int]
@@ -93,25 +88,10 @@ class MLP(nn.Module):
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
 
-    intermediates: List[str] = struct.field(default_factory=list)
-    """A list of intermediate arrays to store in the module's state dictionary."""
-
-    def intermediate(self, name: str, value: Array) -> bool:
-        """Store an intermediate array in the module's state dictionary.
-
-        Args:
-            name: The name of the intermediate array.
-            value: The intermediate array.
-
-        Returns:
-            Whether the intermediate array was stored.
-        """
-        if name in self.intermediates:
-            return self.sow("intermediates", name, value)
-        return False
-
     @nn.compact
-    def __call__(self, x: Float[Array, "S F1"]) -> Float[Array, "S FN"]:
+    def __call__(
+        self, x: Float[Array, "S F1"], hooks: Optional[HookMap] = None
+    ) -> Float[Array, "S FN"]:
         """Applies the MLP module to the input array."""
         dtype = self.dtype or jnp.result_type(x)
         x = jnp.asarray(x, dtype)
@@ -127,10 +107,10 @@ class MLP(nn.Module):
 
         for i, features in enumerate(self.features[:-1]):
             x = init_dense(name=f"fc_{i+1}", features=features)(x)
-            self.intermediate("pre_activation", x)
+            x = apply_hooks(HookPoint.MLP_PRE_ACTIVATION, hooks, x)
 
             x = nn.gelu(x)
-            self.intermediate("post_activation", x)
+            x = apply_hooks(HookPoint.MLP_POST_ACTIVATION, hooks, x)
 
         x = init_dense(name="proj", features=self.features[1])(x)
         return x
@@ -149,8 +129,6 @@ class TransformerBlock(nn.Module):
             weights.
         dtype: The dtype of the input array.
         param_dtype: The dtype of the parameters.
-        intermediates: A list of intermediate arrays to store in the module's
-            state dictionary.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len, model_dim).
@@ -164,12 +142,6 @@ class TransformerBlock(nn.Module):
     5. Applies a multi-layer perceptron to the output of the layer normalization.
     6. Applies residual connection to the output of the multi-layer perceptron.
     7. Applies layer normalization to the output of the residual connection.
-
-    Intermediate Arrays:
-    1. `ln_1_output`: The output of the first layer normalization.
-    2. `attention_output`: The output of the multi-headed attention.
-    3. `ln_2_output`: The output of the second layer normalization.
-    4. `mlp_output`: The output of the multi-layer perceptron.
     """
 
     num_heads: int
@@ -189,29 +161,28 @@ class TransformerBlock(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
-    intermediates: List[str] = struct.field(default_factory=list)
-
-    def intermediate(self, name: str, value: Array) -> bool:
-        """Store an intermediate array in the module's state dictionary."""
-        if name in self.intermediates:
-            return self.sow("intermediates", name, value)
-        return False
-
     @nn.compact
-    def __call__(self, x: Float[Array, "S F"]) -> Float[Array, "S F"]:
+    def __call__(
+        self, x: Float[Array, "S F"], hooks: Optional[HookMap] = None
+    ) -> Float[Array, "S F"]:
         """Applies the transformer block module to the input array."""
+        # Cast the input array to the correct dtype
         dtype = self.dtype or jnp.result_type(x)
         x = jnp.asarray(x, dtype)
 
+        # Define function for initialising layer normalisation layers
         init_layer_norm = partial(
-            LayerNorm, epsilon=self.epsilon, dtype=dtype, param_dtype=self.param_dtype
+            LayerNorm,
+            epsilon=self.epsilon,
+            dtype=dtype,
+            param_dtype=self.param_dtype,
         )
 
         # First layer normalisation
-        x_norm = init_layer_norm(name="ln_1")(x)
-        self.intermediate("ln_1_output", x_norm)
+        x_norm = init_layer_norm(name="ln_1")(x, hooks)
 
         # Multi-headed attention
+        mask = nn.make_causal_mask(jnp.ones(x.shape[:-1]), dtype="bool")
         attn_output = MultiHeadAttention(
             name="attn",
             num_heads=self.num_heads,
@@ -220,16 +191,13 @@ class TransformerBlock(nn.Module):
             init_range=self.init_range,
             dtype=dtype,
             param_dtype=self.param_dtype,
-            intermediates=self.intermediates,
-        )(x_norm)
-        self.intermediate("attention_output", attn_output)
+        )(x_norm, mask, hooks)
 
         # First residual connection
         x = attn_output + x
 
         # Second layer normalisation
-        x_norm = init_layer_norm(name="ln_2")(x)
-        self.intermediate("ln_2_output", x_norm)
+        x_norm = init_layer_norm(name="ln_2")(x, hooks)
 
         # MLP
         mlp_out = MLP(
@@ -238,8 +206,7 @@ class TransformerBlock(nn.Module):
             init_range=self.init_range,
             dtype=dtype,
             param_dtype=self.param_dtype,
-            intermediates=self.intermediates,
-        )(x_norm)
+        )(x_norm, hooks)
 
         # Second residual connection
         x = mlp_out + x
@@ -262,8 +229,6 @@ class Transformer(nn.Module):
             weights.
         dtype: The dtype of the input array.
         param_dtype: The dtype of the parameters.
-        intermediates: A list of intermediate arrays to store in the module's
-            state dictionary.
 
     Input/Output Dimensionality:
     1. Input shape: (...batch_dims, seq_len).
@@ -277,12 +242,6 @@ class Transformer(nn.Module):
     5. Applies layer normalization to the output of the transformer block.
     6. Applies a linear transformation to the output of the layer normalization.
     7. Applies a softmax function to the output of the linear transformation.
-
-    Intermediate Arrays:
-    1. `embedding`: The output of the text embedding.
-    2. `positional_embedding`: The output of the positional embedding.
-    3. `residual`: The output of the residual connection.
-    4. `final_output`: The output of the final layer normalization.
     """
 
     model_dim: int = 768
@@ -308,25 +267,19 @@ class Transformer(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
-    intermediates: List[str] = struct.field(default_factory=list)
-    """A list of intermediate arrays to store in the module's state dictionary."""
-
-    def intermediate(self, name: str, value: Array) -> bool:
-        """Store an intermediate array in the module's state dictionary."""
-        if name in self.intermediates:
-            return self.sow("intermediates", name, value)
-        return False
-
     @classmethod
     def from_config(cls, config: TransformerConfig, **kwargs):
         """Creates a `Transformer` module from a `TransformerConfig` object."""
         return cls(**config.__dict__, **kwargs)
 
     @nn.compact
-    def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S V"]:
+    def __call__(
+        self, tokens: Int[Array, "... S"], hooks: Optional[HookMap] = None
+    ) -> Float[Array, "... S V"]:
         """Applies the transformer module to the input array."""
         dtype = jnp.promote_types(self.dtype, jnp.float32)
 
+        # Embed the input tokens
         embed = Embed(
             name="embed",
             features=self.model_dim,
@@ -334,8 +287,9 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        self.intermediate("embedding", embed)
+        embed = apply_hooks(HookPoint.EMBED, hooks, embed)
 
+        # Embed the positional information
         pos_embed = PosEmbed(
             name="pos_embed",
             features=self.model_dim,
@@ -343,11 +297,12 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        self.intermediate("positional_embedding", pos_embed)
+        pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed)
 
+        # Combine the embeddings
         x = embed + pos_embed
-        self.intermediate("residual", x)
 
+        # Apply the transformer blocks
         for i in range(self.num_layers):
             x = TransformerBlock(
                 name=f"block_{i}",
@@ -359,18 +314,16 @@ class Transformer(nn.Module):
                 init_range=self.init_range,
                 dtype=dtype,
                 param_dtype=self.param_dtype,
-                intermediates=self.intermediates,
-            )(x)
+            )(x, hooks)
 
-        self.intermediate("residual", x)
-
+        # Final layer normalisation
         x = LayerNorm(
             name="ln_f",
             epsilon=self.layer_norm_eps,
             dtype=dtype,
             param_dtype=self.param_dtype,
-        )(x)
-        self.intermediate("final_output", x)
+        )(x, hooks)
+        x = apply_hooks(HookPoint.FINAL_OUTPUT, hooks, x)
 
         logits = Unembed(
             name="unembed",

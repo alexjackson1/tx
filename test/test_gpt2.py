@@ -9,6 +9,8 @@ import pytest
 import jax.numpy as jnp
 from jaxtyping import Array
 
+import flax.linen as nn
+
 from tx.modules import (
     LayerNorm,
     Embed,
@@ -56,7 +58,9 @@ def test_attention(gpt2_params):
     model = MultiHeadAttention(num_heads=12, head_dim=64, features=768)
     variables = {"params": gpt2_params["block_0"]["attn"]}
     input_data = jnp.ones((1024, 768), dtype=jnp.float32)
-    output: Array = model.apply(variables, input_data)
+    output: Array = model.apply(
+        variables, input_data, mask=nn.make_causal_mask(jnp.ones(1024), dtype="bool")
+    )
     assert output.shape == (1024, 768)
 
 
