@@ -143,7 +143,9 @@ class PosEmbed(nn.Module):
     """The dtype of the parameters."""
 
     @nn.compact
-    def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S F"]:
+    def __call__(
+        self, tokens: Int[Array, "... S"], offset: int = 0
+    ) -> Float[Array, "... S F"]:
         """Computes the positional embeddings for each token in the input array."""
         # Lookup embeddings
         embedding = self.param(
@@ -152,7 +154,7 @@ class PosEmbed(nn.Module):
             (self.num_embeddings, self.features),
             self.param_dtype,
         )
-        return embedding[: tokens.shape[-1]]
+        return embedding[offset : tokens.shape[-1] + offset, :]
 
 
 class Unembed(nn.Module):

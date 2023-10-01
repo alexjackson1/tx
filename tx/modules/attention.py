@@ -7,7 +7,34 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
+from tx.modules.caching import CacheEntry
 from tx.modules.hooks import HookMap, HookPoint, apply_hooks
+
+
+def apply_causal_mask(
+    mask: Bool[Array, "S S"], scores: Float[Array, "... NH QL KL"], offset: int = 0
+) -> Float[Array, "... NH QL KL"]:
+    """Applies a causal mask to the attention scores (pre-normalisation).
+
+    Args:
+        mask: A boolean array indicating which elements to mask.
+        scores: The attention scores.
+        offset: The offset of the mask.
+
+    Returns:
+        The masked attention scores.
+    """
+    *batch_dims, _, query_length, key_length = scores.shape
+    if query_length + offset != key_length:
+        raise ValueError(
+            f"QL {query_length} + offset {offset} should = KL {key_length}"
+        )
+
+    num_batch_dims = len(batch_dims)
+    mask = jnp.expand_dims(mask, axis=range(num_batch_dims)) if num_batch_dims else mask
+    sub_mask = mask[offset : offset + query_length, :key_length]
+
+    return jnp.where(sub_mask, scores, jnp.array(jnp.finfo(scores.dtype).min))
 
 
 class MultiHeadAttention(nn.Module):
@@ -59,17 +86,30 @@ class MultiHeadAttention(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
-    # TODO: Consider taking the mask as an argument.
     @nn.compact
     def __call__(
         self,
-        x: Float[Array, "... S F"],
+        states: Float[Array, "... S F"],
         mask: Bool[Array, "... S"],
         hooks: Optional[HookMap] = None,
+        cache_entry: Optional[CacheEntry] = None,
     ) -> Float[Array, "... S F"]:
-        """Applies the multi-headed attention module to the input array."""
-        dtype = self.dtype or jnp.result_type(x)
-        x = jnp.asarray(x, dtype)
+        """Applies the multi-headed attention module to the input array.
+
+        Args:
+            states: The input array.
+            mask: A boolean array indicating which elements to mask.
+            hooks: A dictionary of hooks to apply to the attention outputs.
+            cache_entry: A cache entry containing the previous key and value
+                arrays.
+
+        Returns:
+            The attention output.
+        """
+
+        # TODO: Make this implementation immutable.
+        dtype = self.dtype or jnp.result_type(states)
+        states = jnp.asarray(states, dtype)
 
         init_dense = partial(
             nn.DenseGeneral,
@@ -81,21 +121,25 @@ class MultiHeadAttention(nn.Module):
         )
 
         # Apply a linear transformation to the input tensor.
-        hidden_states = init_dense(name="c_attn", features=3 * self.features)(x)
+        hidden_states = init_dense(name="c_attn", features=3 * self.features)(states)
 
         # Split the hidden states into query, key, and value.
         qkv_states = self._split_outputs(hidden_states)
         query, key, value = self._apply_qkv_hooks(qkv_states, hooks)
-        query_length, key_length = query.shape[-3], key.shape[-3]
+
+        # If using a cache, append the new keys and values to the cached values.
+        if cache_entry is not None:
+            offset = cache_entry.past_keys.shape[1]
+            key, value = cache_entry.append(key, value)
+        else:
+            offset = 0
 
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
 
         # Apply the causal mask to the attention weights.
-        mask = mask[..., :query_length, :key_length]
-        big_neg = jnp.finfo(dtype).min
-        scores = jnp.where(mask, scores, big_neg)
+        scores = apply_causal_mask(mask, scores, offset)
         scores = apply_hooks(HookPoint.ATTN_SCORES, hooks, scores)
 
         # Normalise the attention weights

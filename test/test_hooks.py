@@ -77,9 +77,7 @@ def multi_head_attention_params(
     rng, multi_head_attention: MultiHeadAttention
 ) -> Params:
     return multi_head_attention.init(
-        rng,
-        jnp.ones((12, 64, 768)),
-        nn.make_causal_mask(jnp.ones((256,))),
+        rng, jnp.ones((1024, 768)), nn.make_causal_mask(jnp.ones(1024))
     )["params"]
 
 
@@ -162,8 +160,8 @@ def test_multi_head_attention_query_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_query_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_query": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -176,8 +174,8 @@ def test_multi_head_attention_key_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_key_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_key": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -190,8 +188,8 @@ def test_multi_head_attention_value_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_value_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_value": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -204,8 +202,8 @@ def test_multi_head_attention_scores_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_scores_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_scores": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -218,8 +216,8 @@ def test_multi_head_attention_weights_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_weights_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_weights": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -232,8 +230,8 @@ def test_multi_head_attention_z_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_z_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_z": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 
@@ -246,8 +244,8 @@ def test_multi_head_attention_output_hook_called(
 ):
     stub = mocker.stub(name="multi_head_attention_output_hook_stub")
     variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (12, 64, 768))
-    mask = nn.make_causal_mask(jnp.ones((256,)))
+    inputs = jr.uniform(rng, (1024, 768))
+    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
     hooks = {"attn_output": Hook(make_hook_fn(stub))}
     output = multi_head_attention.apply(variables, inputs, mask, hooks)
 

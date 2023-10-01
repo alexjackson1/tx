@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple, Union
 from jaxtyping import Array, Float, Int
 
 import dataclasses
@@ -7,6 +7,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+from tx.modules.caching import Cache, CacheEntry
 
 from tx.modules.hooks import HookMap, HookPoint, apply_hooks
 
@@ -163,7 +164,10 @@ class TransformerBlock(nn.Module):
 
     @nn.compact
     def __call__(
-        self, x: Float[Array, "S F"], hooks: Optional[HookMap] = None
+        self,
+        x: Float[Array, "S F"],
+        hooks: Optional[HookMap] = None,
+        cache_entry: Optional[CacheEntry] = None,
     ) -> Float[Array, "S F"]:
         """Applies the transformer block module to the input array."""
         # Cast the input array to the correct dtype
@@ -191,7 +195,7 @@ class TransformerBlock(nn.Module):
             init_range=self.init_range,
             dtype=dtype,
             param_dtype=self.param_dtype,
-        )(x_norm, mask, hooks)
+        )(x_norm, mask, hooks, cache_entry)
 
         # First residual connection
         x = attn_output + x
@@ -272,10 +276,33 @@ class Transformer(nn.Module):
         """Creates a `Transformer` module from a `TransformerConfig` object."""
         return cls(**config.__dict__, **kwargs)
 
+    def compute_offset(self, tokens: Int[Array, "... S"], cache: Optional[Cache]):
+        if cache is None:
+            return 0
+
+        if len(cache.entries) == 0:
+            raise ValueError("Cache must have at least one entry")
+
+        first_entry = cache[0].past_keys
+        *batch_dims, ctx_length = tokens.shape
+        (*c_batch_dims, c_ctx_length, c_num_heads, c_head_dim) = first_entry.shape
+
+        assert c_batch_dims == batch_dims
+        assert c_num_heads == self.num_heads
+        assert c_head_dim == self.head_dim
+
+        if c_ctx_length == 0 or ctx_length == 1:
+            raise ValueError("Cache must have at least one token")
+
+        return c_ctx_length
+
     @nn.compact
     def __call__(
-        self, tokens: Int[Array, "... S"], hooks: Optional[HookMap] = None
-    ) -> Float[Array, "... S V"]:
+        self,
+        tokens: Int[Array, "... S"],
+        hooks: Optional[HookMap] = None,
+        cache: Optional[Cache] = None,
+    ) -> Union[Float[Array, "... S V"], Tuple[Float[Array, "... S V"], Cache]]:
         """Applies the transformer module to the input array."""
         dtype = jnp.promote_types(self.dtype, jnp.float32)
 
@@ -290,13 +317,14 @@ class Transformer(nn.Module):
         embed = apply_hooks(HookPoint.EMBED, hooks, embed)
 
         # Embed the positional information
+        offset = self.compute_offset(tokens, cache)
         pos_embed = PosEmbed(
             name="pos_embed",
             features=self.model_dim,
             num_embeddings=self.context_length,
             init_range=self.init_range,
             param_dtype=self.param_dtype,
-        )(tokens)
+        )(tokens, offset)
         pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed)
 
         # Combine the embeddings
@@ -304,7 +332,7 @@ class Transformer(nn.Module):
 
         # Apply the transformer blocks
         for i in range(self.num_layers):
-            x = TransformerBlock(
+            block_output = TransformerBlock(
                 name=f"block_{i}",
                 num_heads=self.num_heads,
                 head_dim=self.head_dim,
@@ -314,7 +342,9 @@ class Transformer(nn.Module):
                 init_range=self.init_range,
                 dtype=dtype,
                 param_dtype=self.param_dtype,
-            )(x, hooks)
+            )(x, hooks, cache[i] if cache else None)
+
+            x = block_output[0] if cache else block_output
 
         # Final layer normalisation
         x = LayerNorm(
@@ -333,4 +363,5 @@ class Transformer(nn.Module):
             dtype=dtype,
             param_dtype=self.param_dtype,
         )(x)
-        return logits
+
+        return (logits, cache) if cache else logits
