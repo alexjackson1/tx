@@ -1,17 +1,23 @@
 from enum import Enum
-from typing import Callable, NamedTuple, Optional, TypedDict
 from jaxtyping import Array
+from typing import Callable, NamedTuple, Optional, TypedDict
+
 import flax.linen as nn
 
 
 HookFn = Callable[[nn.Module, Array], Array]
+"""A function that applies a hook to an array."""
 
 
 class Hook(NamedTuple):
+    """A hook that can be applied to an activation."""
+
     apply: HookFn
 
 
 class HookPoint(Enum):
+    """The points at which hooks can be applied."""
+
     # Transformer
     EMBED = "embed"
     """The output of the embedding layer."""
@@ -50,6 +56,8 @@ class HookPoint(Enum):
 
 
 class HookMap(TypedDict):
+    """A mapping of hook points to hooks."""
+
     embed: Optional[Hook]
     """A hook applied to the output of the embedding layer."""
     pos_embed: Optional[Hook]

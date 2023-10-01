@@ -1,14 +1,13 @@
-from typing import Optional, Tuple
-from jaxtyping import Array, Float, Bool
-
 from functools import partial
+from jaxtyping import Array, Float, Bool
+from typing import Optional, Tuple
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from tx.modules.caching import CacheEntry
-from tx.modules.hooks import HookMap, HookPoint, apply_hooks
+from .cache import CacheEntry
+from .hooks import HookMap, HookPoint, apply_hooks
 
 
 def apply_causal_mask(

@@ -1,11 +1,11 @@
-from typing import Optional
 from jaxtyping import Array, Float, Int
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from tx.modules.hooks import HookMap, HookPoint, apply_hooks
+from .hooks import HookMap, HookPoint, apply_hooks
 
 
 class LayerNorm(nn.Module):

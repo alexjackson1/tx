@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import optax
 
-from tx.modules.transformer import TransformerConfig
+from .modules.transformer import TransformerConfig
 
 
 def tx_to_flax(config: TransformerConfig, tx_params: optax.Params) -> optax.Params:

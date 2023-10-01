@@ -1,5 +1,5 @@
-from typing import Dict
 from jaxtyping import Array
+from typing import Dict
 
 import jax.numpy as jnp
 from transformers import FlaxGPT2LMHeadModel

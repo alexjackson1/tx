@@ -1,10 +1,10 @@
-from typing import Dict, List, Optional, Union
 from jaxtyping import Int, Array, Float
+from typing import Dict, List, Optional, Union
 
 from transformers import PreTrainedTokenizerBase
 
-from tx.modules import Transformer, TransformerConfig, HookMap
-from tx.models.gpt2 import PretrainedGPT2Model
+from .modules import Transformer, TransformerConfig, HookMap
+from .models.gpt2 import PretrainedGPT2Model
 
 
 DArray = Union[Dict[str, Array], Dict[str, "DArray"]]

@@ -1,21 +1,19 @@
-from typing import Iterable, Optional, Tuple, Union
-from jaxtyping import Array, Float, Int
-
-import dataclasses
+from dataclasses import dataclass
 from functools import partial
+from jaxtyping import Array, Float, Int
+from typing import Iterable, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-from tx.modules.caching import Cache, CacheEntry
-
-from tx.modules.hooks import HookMap, HookPoint, apply_hooks
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
+from .cache import Cache, CacheEntry
+from .hooks import HookMap, HookPoint, apply_hooks
 
 
-@dataclasses.dataclass
+@dataclass
 class TransformerConfig:
     """Configuration for the `Transformer` module.
 
@@ -55,6 +53,7 @@ class TransformerConfig:
     dtype: Optional[jnp.dtype] = None
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
+    """The dtype of the parameters."""
 
 
 class MLP(nn.Module):

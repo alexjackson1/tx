@@ -1,6 +1,6 @@
-from typing import List
-from jaxtyping import Array, Float
 from dataclasses import dataclass
+from jaxtyping import Array, Float
+from typing import List
 
 import jax.numpy as jnp
 
