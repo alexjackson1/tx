@@ -139,7 +139,7 @@ def test_mlp_pre_activation_hook_called(rng, mocker: MockerFixture, mlp, mlp_par
     stub = mocker.stub(name="mlp_pre_activation_hook_stub")
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
-    hooks = {"pre_activation": Hook(make_hook_fn(stub))}
+    hooks = {"mlp_pre_activation": Hook(make_hook_fn(stub))}
     output = mlp.apply(variables, inputs, hooks)
 
     output.block_until_ready()
@@ -150,7 +150,7 @@ def test_mlp_post_activation_hook_called(rng, mocker: MockerFixture, mlp, mlp_pa
     stub = mocker.stub(name="mlp_post_activation_hook_stub")
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
-    hooks = {"post_activation": Hook(make_hook_fn(stub))}
+    hooks = {"mlp_post_activation": Hook(make_hook_fn(stub))}
     output = mlp.apply(variables, inputs, hooks)
 
     output.block_until_ready()
