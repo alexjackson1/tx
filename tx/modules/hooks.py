@@ -19,39 +19,41 @@ class HookPoint(Enum):
     """The points at which hooks can be applied."""
 
     # Transformer
-    EMBED = "embed"
+    EMBED = "embed_hook"
     """The output of the embedding layer."""
-    POS_EMBED = "pos_embed"
+    POS_EMBED = "pos_embed_hook"
     """The output of the positional embedding layer."""
-    FINAL_OUTPUT = "final_output"
+    RESIDUAL = "residual_hook"
+    """The residual connection."""
+    FINAL_OUTPUT = "final_output_hook"
     """The final output of the model (prior to unembedding)."""
 
     # Layer Norm
-    LN_STD = "ln_std"
+    LN_STD = "std_hook"
     """The standard deviation of the layer norm input."""
-    LN_NORMALIZED = "ln_normalized"
+    LN_NORMALIZED = "normalized_hook"
     """The normalized layer norm input."""
 
     # Multi-Head Attention
-    ATTN_QUERY = "attn_query"
+    ATTN_QUERY = "query_hook"
     """The attention query."""
-    ATTN_KEY = "attn_key"
+    ATTN_KEY = "key_hook"
     """The attention key."""
-    ATTN_VALUE = "attn_value"
+    ATTN_VALUE = "value_hook"
     """The attention value."""
-    ATTN_SCORES = "attn_scores"
+    ATTN_SCORES = "scores_hook"
     """The attention scores."""
-    ATTN_WEIGHTS = "attn_weights"
+    ATTN_WEIGHTS = "weights_hook"
     """The attention weights."""
-    ATTN_Z = "attn_z"
+    ATTN_Z = "z_hook"
     """The attention weights indexed with values"""
-    ATTN_OUTPUT = "attn_output"
+    ATTN_OUTPUT = "output_hook"
     """The output of the attention block at each layer."""
 
     # MLP
-    MLP_PRE_ACTIVATION = "mlp_pre_activation"
+    MLP_PRE_ACTIVATION = "pre_activation_hook"
     """The output of the MLP before the activation function."""
-    MLP_POST_ACTIVATION = "mlp_post_activation"
+    MLP_POST_ACTIVATION = "post_activation_hook"
     """The output of the MLP after the activation function."""
 
 
@@ -62,6 +64,8 @@ class HookMap(TypedDict):
     """A hook applied to the output of the embedding layer."""
     pos_embed: Optional[Hook]
     """A hook applied to the output of the positional embedding layer."""
+    residual: Optional[Hook]
+    """A hook applied to the residual connection."""
     final_output: Optional[Hook]
     """A hook applied to the final output of the model (prior to unembedding)."""
     ln_std: Optional[Hook]
@@ -93,5 +97,5 @@ def apply_hooks(
 ) -> Array:
     """Applies a hook to the given array."""
     if hooks is not None and hook_point.value in hooks:
-        x = hooks[hook_point.value].apply(x, **kwargs)
+        x = hooks[hook_point.value].apply(x, hook_point=hook_point, **kwargs)
     return x

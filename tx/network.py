@@ -1,5 +1,6 @@
 from jaxtyping import Int, Array, Float
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
+from optax import Params
 
 from transformers import PreTrainedTokenizerBase
 
@@ -29,40 +30,71 @@ def configure_tokenizer(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokeniz
     return tokenizer
 
 
+Tokens = Int[Array, "S"]
+String = str
+TokensOrString = Union[Tokens, String]
+Logits = Float[Array, "S"]
+
+
 class GenerativeModel:
     config: TransformerConfig
-    tokenizer: PreTrainedTokenizerBase
-    variables: DArray
+    decode: bool
+
+    tokenizer: Optional[PreTrainedTokenizerBase] = None
+    params: Optional[Params] = None
+    hooks: HookMap
+    mutable: List[str]
+    cache: Optional[Params] = None
 
     def __init__(
         self,
         config: TransformerConfig,
-        variables: Union[DArray, None] = None,
-        tokenizer: Union[PreTrainedTokenizerBase, None] = None,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        params: Optional[Params] = None,
+        hooks: Optional[HookMap] = None,
+        hook_collections: List[str] = [],
     ):
         self.config = config
-        self.variables = variables
+        self.decode = config.decode
+
+        if self.decode:
+            self.reset_cache()
+
+        self.mutable = ["cache"] if self.config.decode else []
 
         if tokenizer is not None:
-            self.configure_tokenizer(tokenizer)
+            self.tokenizer = configure_tokenizer(tokenizer)
 
-    def configure_tokenizer(
-        self, tokenizer: Union[PreTrainedTokenizerBase, None] = None
-    ):
-        if tokenizer is None and self.tokenizer is None:
-            raise ValueError("Tokenizer not provided")
-        elif tokenizer is not None:
-            self.tokenizer = tokenizer
+        if params is not None:
+            self.params = params
 
-        self.tokenizer = configure_tokenizer(self.tokenizer)
+        if hooks is not None:
+            self.hooks = hooks
+            self.mutable = list(set(self.mutable).union(set(hook_collections)))
+        else:
+            self.hooks = HookMap()
+
+    def reset_cache(self) -> None:
+        self.cache = {}
+
+    def set_tokenizer(self, tokenizer: PreTrainedTokenizerBase) -> None:
+        self.tokenizer = configure_tokenizer(tokenizer)
+
+    def set_params(self, params: Params) -> None:
+        self.params = params
+
+    def set_hooks(self, hooks: HookMap, collections: List[str] = []) -> None:
+        self.mutable = ["cache"] if self.config.decode else []
+        self.mutable = list(set(self.mutable).union(set(collections)))
+        self.hooks = hooks
 
     def to_tokens(
         self,
-        input: str,
+        input: String,
         prepend_bos: bool = False,
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
-    ) -> Int[Array, "seq"]:
+    ) -> Tokens:
         if self.tokenizer is None:
             raise ValueError("Tokenizer not provided")
 
@@ -79,7 +111,7 @@ class GenerativeModel:
         )
         return output["input_ids"][0]
 
-    def to_str(self, tokens: Int[Array, "seq"], clean_spaces: bool = False) -> str:
+    def to_str(self, tokens: Tokens, clean_spaces: bool = False) -> String:
         if self.tokenizer is None:
             raise ValueError("Tokenizer not provided")
 
@@ -87,49 +119,33 @@ class GenerativeModel:
 
     def to_str_list(
         self,
-        input: Union[str, Int[Array, "seq"]],
+        input: TokensOrString,
         prepend_bos: bool = False,
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
     ) -> List[str]:
-        if isinstance(input, str):
+        if isinstance(input, String):
             tokens = self.to_tokens(input, prepend_bos, truncate, max_length)
         else:
             tokens = input
 
         return list(map(self.to_str, tokens))
 
-    def run(
-        self, inputs: Int[Array, "seq"], hooks: Optional[HookMap]
-    ) -> Float[Array, "seq vocab"]:
-        if self.variables is None:
-            raise ValueError("Variables not provided")
+    def model(self) -> Transformer:
+        return Transformer.from_config(self.config)
 
-        transformer = Transformer.from_config(self.config)
-        return transformer.apply(self.variables, inputs, hooks)
+    def __call__(self, tokens: Tokens) -> Tuple[Logits, Params]:
+        if self.params is None:
+            raise ValueError("Params not initialised")
 
-    def __call__(self, inputs: Int[Array, "seq"]) -> Float[Array, "seq vocab"]:
-        return self.run(inputs)
+        variables = {"params": self.params}
+        if self.decode:
+            variables["cache"] = self.cache
 
+        model = self.model()
+        logits, state = model.apply(variables, tokens, self.hooks, mutable=self.mutable)
 
-if __name__ == "__main__":
-    import sys, os
+        if self.decode:
+            self.cache = state["cache"]
 
-    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-    from transformers import GPT2TokenizerFast
-
-    gpt2 = PretrainedGPT2Model.from_pretrained("gpt2")
-    tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-    model = GenerativeModel(
-        gpt2.tx_config, variables={"params": gpt2.to_params()}, tokenizer=tokenizer
-    )
-
-    input_text = "Hello, my name is"
-    print(input_text, end="", flush=True)
-    for _ in range(10):
-        x = model.generate(input_text)
-        print(x, end="", flush=True)
-        input_text += x
-
-    print()
+        return logits, state

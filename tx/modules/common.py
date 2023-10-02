@@ -50,7 +50,7 @@ class LayerNorm(nn.Module):
         x_std = jnp.sqrt(x_var + self.epsilon)
 
         x = (x - x_mean) / x_std
-        x = apply_hooks(HookPoint.LN_STD, hooks, x)
+        x = apply_hooks(HookPoint.LN_STD, hooks, x, module=self)
 
         # Apply scale and bias
         scale = self.param(
@@ -66,7 +66,7 @@ class LayerNorm(nn.Module):
             self.param_dtype,
         )
         x = x * scale + bias
-        x = apply_hooks(HookPoint.LN_NORMALIZED, hooks, x)
+        x = apply_hooks(HookPoint.LN_NORMALIZED, hooks, x, module=self)
 
         return x
 

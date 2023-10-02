@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
 from jaxtyping import Array, Float, Int
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Optional
 
 import jax
 import jax.numpy as jnp
@@ -9,7 +9,6 @@ import flax.linen as nn
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
-from .cache import Cache, CacheEntry
 from .hooks import HookMap, HookPoint, apply_hooks
 
 
@@ -48,6 +47,8 @@ class TransformerConfig:
     """The size of the intermediate layer in the `MLP` module."""
     layer_norm_eps: float = 1e-5
     """The epsilon value for `LayerNorm` layers."""
+    decode: bool = False
+    """Whether to use the transformer in decode mode."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
     dtype: Optional[jnp.dtype] = None
@@ -107,10 +108,10 @@ class MLP(nn.Module):
 
         for i, features in enumerate(self.features[:-1]):
             x = init_dense(name=f"fc_{i+1}", features=features)(x)
-            x = apply_hooks(HookPoint.MLP_PRE_ACTIVATION, hooks, x)
+            x = apply_hooks(HookPoint.MLP_PRE_ACTIVATION, hooks, x, module=self)
 
             x = nn.gelu(x)
-            x = apply_hooks(HookPoint.MLP_POST_ACTIVATION, hooks, x)
+            x = apply_hooks(HookPoint.MLP_POST_ACTIVATION, hooks, x, module=self)
 
         x = init_dense(name="proj", features=self.features[1])(x)
         return x
@@ -125,6 +126,7 @@ class TransformerBlock(nn.Module):
         model_dim: The size of the model.
         mlp_dim: The size of the intermediate layer in the `MLP` module.
         epsilon: The epsilon value to in `LayerNorm` layers.
+        decode: Whether to use cache in the transformer blocks.
         init_range: The range of the normal distribution used to initialize the
             weights.
         dtype: The dtype of the input array.
@@ -154,6 +156,8 @@ class TransformerBlock(nn.Module):
     """The size of the intermediate layer in the `MLP` module."""
     epsilon: float = 1e-5
     """The epsilon value for `LayerNorm` layers."""
+    decode: bool = False
+    """Whether to use cache in the transformer blocks."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
     dtype: Optional[jnp.dtype] = None
@@ -163,10 +167,7 @@ class TransformerBlock(nn.Module):
 
     @nn.compact
     def __call__(
-        self,
-        x: Float[Array, "S F"],
-        hooks: Optional[HookMap] = None,
-        cache_entry: Optional[CacheEntry] = None,
+        self, x: Float[Array, "S F"], hooks: Optional[HookMap] = None
     ) -> Float[Array, "S F"]:
         """Applies the transformer block module to the input array."""
         # Cast the input array to the correct dtype
@@ -192,9 +193,10 @@ class TransformerBlock(nn.Module):
             head_dim=self.head_dim,
             features=self.model_dim,
             init_range=self.init_range,
+            decode=self.decode,
             dtype=dtype,
             param_dtype=self.param_dtype,
-        )(x_norm, mask, hooks, cache_entry)
+        )(x_norm, mask, hooks)
 
         # First residual connection
         x = attn_output + x
@@ -228,6 +230,7 @@ class Transformer(nn.Module):
         mlp_dim: The size of the intermediate layer in the `MLP` module.
         num_layers: The number of layers of transformer blocks in the model.
         layer_norm_eps: The epsilon value to in `LayerNorm` layers.
+        decode: Whether to use cache in the transformer blocks.
         init_range: The range of the normal distribution used to initialize the
             weights.
         dtype: The dtype of the input array.
@@ -263,6 +266,8 @@ class Transformer(nn.Module):
     """The size of the intermediate layer in the `MLP` module."""
     num_layers: int = 12
     """The number of layers of transformer blocks in the model."""
+    decode: bool = False
+    """Whether to use the transformer in decode mode."""
     init_range: float = 0.02
     """The range of the normal distribution used to initialize the weights."""
     dtype: Optional[jnp.dtype] = None
@@ -275,33 +280,10 @@ class Transformer(nn.Module):
         """Creates a `Transformer` module from a `TransformerConfig` object."""
         return cls(**config.__dict__, **kwargs)
 
-    def compute_offset(self, tokens: Int[Array, "... S"], cache: Optional[Cache]):
-        if cache is None:
-            return 0
-
-        if len(cache.entries) == 0:
-            raise ValueError("Cache must have at least one entry")
-
-        first_entry = cache[0].past_keys
-        *batch_dims, ctx_length = tokens.shape
-        (*c_batch_dims, c_ctx_length, c_num_heads, c_head_dim) = first_entry.shape
-
-        assert c_batch_dims == batch_dims
-        assert c_num_heads == self.num_heads
-        assert c_head_dim == self.head_dim
-
-        if c_ctx_length == 0 or ctx_length == 1:
-            raise ValueError("Cache must have at least one token")
-
-        return c_ctx_length
-
     @nn.compact
     def __call__(
-        self,
-        tokens: Int[Array, "... S"],
-        hooks: Optional[HookMap] = None,
-        cache: Optional[Cache] = None,
-    ) -> Union[Float[Array, "... S V"], Tuple[Float[Array, "... S V"], Cache]]:
+        self, tokens: Int[Array, "... S"], hooks: Optional[HookMap] = None
+    ) -> Float[Array, "... S V"]:
         """Applies the transformer module to the input array."""
         dtype = jnp.promote_types(self.dtype, jnp.float32)
 
@@ -313,17 +295,17 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        embed = apply_hooks(HookPoint.EMBED, hooks, embed)
+        embed = apply_hooks(HookPoint.EMBED, hooks, embed, module=self)
 
         # Embed the positional information
-        offset = self.compute_offset(tokens, cache)
+        # offset = self.compute_offset(tokens, cache)
         pos_embed = PosEmbed(
             name="pos_embed",
             features=self.model_dim,
             num_embeddings=self.context_length,
             init_range=self.init_range,
             param_dtype=self.param_dtype,
-        )(tokens, offset)
+        )(tokens)
         pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed)
 
         # Combine the embeddings
@@ -331,19 +313,19 @@ class Transformer(nn.Module):
 
         # Apply the transformer blocks
         for i in range(self.num_layers):
-            block_output = TransformerBlock(
+            x = TransformerBlock(
                 name=f"block_{i}",
                 num_heads=self.num_heads,
                 head_dim=self.head_dim,
                 model_dim=self.model_dim,
                 mlp_dim=self.mlp_dim,
                 epsilon=self.layer_norm_eps,
+                decode=self.decode,
                 init_range=self.init_range,
                 dtype=dtype,
                 param_dtype=self.param_dtype,
-            )(x, hooks, cache[i] if cache else None)
-
-            x = block_output[0] if cache else block_output
+            )(x, hooks)
+            x = apply_hooks(HookPoint.RESIDUAL, hooks, x, module=self)
 
         # Final layer normalisation
         x = LayerNorm(
@@ -352,7 +334,7 @@ class Transformer(nn.Module):
             dtype=dtype,
             param_dtype=self.param_dtype,
         )(x, hooks)
-        x = apply_hooks(HookPoint.FINAL_OUTPUT, hooks, x)
+        x = apply_hooks(HookPoint.FINAL_OUTPUT, hooks, x, module=self)
 
         logits = Unembed(
             name="unembed",
@@ -363,4 +345,4 @@ class Transformer(nn.Module):
             param_dtype=self.param_dtype,
         )(x)
 
-        return (logits, cache) if cache else logits
+        return logits

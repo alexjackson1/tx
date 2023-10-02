@@ -1,12 +1,12 @@
 from functools import partial
 from jaxtyping import Array, Float, Bool
-from typing import Optional, Tuple
+from typing import NamedTuple, Optional, Tuple
 
 import jax
+import jax.lax as lax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from .cache import CacheEntry
 from .hooks import HookMap, HookPoint, apply_hooks
 
 
@@ -23,17 +23,53 @@ def apply_causal_mask(
     Returns:
         The masked attention scores.
     """
-    *batch_dims, _, query_length, key_length = scores.shape
-    if query_length + offset != key_length:
-        raise ValueError(
-            f"QL {query_length} + offset {offset} should = KL {key_length}"
-        )
+    big_neg = jnp.finfo(scores.dtype).min
+    return jnp.where(mask, scores, big_neg)
 
-    num_batch_dims = len(batch_dims)
-    mask = jnp.expand_dims(mask, axis=range(num_batch_dims)) if num_batch_dims else mask
-    sub_mask = mask[offset : offset + query_length, :key_length]
 
-    return jnp.where(sub_mask, scores, jnp.array(jnp.finfo(scores.dtype).min))
+def combine_masks(*masks: Optional[Array], dtype: jnp.dtype = jnp.float32) -> Array:
+    """Combine attention masks.
+
+    Args:
+      *masks: set of attention mask arguments to combine, some can be None.
+      dtype: dtype for the returned mask.
+
+    Returns:
+      Combined mask, reduced by logical and, returns None if no masks given.
+    """
+    masks_list = [m for m in masks if m is not None]
+    if not masks_list:
+        return None
+
+    if len(masks_list) == 1:
+        return masks_list[0].astype(dtype)
+
+    if not all(map(lambda x: x.shape == masks_list[0].shape, masks_list)):
+        shapes = tuple(map(lambda x: x.shape, masks_list))
+        raise ValueError(f"masks must have same shape: {shapes}")
+
+    mask, *other_masks = masks_list
+    for other_mask in other_masks:
+        mask = jnp.logical_and(mask, other_mask)
+
+    return mask.astype(dtype)
+
+
+class KeyValueCache(NamedTuple):
+    """A cache entry containing the previous key and value arrays.
+
+    Attributes:
+        key: The previous key array.
+        value: The previous value array.
+        index: The current index.
+    """
+
+    key: nn.Variable[Float[Array, "... S NH HD"]]
+    """The previous key array."""
+    value: nn.Variable[Float[Array, "... S NH HD"]]
+    """The previous value array."""
+    index: nn.Variable[int]
+    """The current index."""
 
 
 class MultiHeadAttention(nn.Module):
@@ -43,6 +79,7 @@ class MultiHeadAttention(nn.Module):
         num_heads: The number of attention heads.
         head_dim: The dimensionality of each attention head.
         features: The dimensionality of the linear models.
+        decode: Whether to cache the key and value arrays.
         init_range: The standard deviation of the normal distribution used to
             initialize the linear transformations.
         use_bias: Whether to include a bias term in the linear transformations.
@@ -75,15 +112,34 @@ class MultiHeadAttention(nn.Module):
     """The number of attention heads."""
     head_dim: int
     """The dimensionality of each attention head."""
+    context_length: int = 1024
+    """The length of the context."""
     init_range: float = 0.02
     """The standard deviation of the normal distribution used to initialize the
     linear transformations."""
     use_bias: bool = True
     """Whether to include a bias term in the linear transformations."""
+    decode: bool = False
+    """Whether to cache the key and value arrays."""
     dtype: Optional[jnp.dtype] = None
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
+
+    def init_cache(
+        self,
+        key: Float[Array, "... S NH HD"],
+        value: Float[Array, "... S NH HD"],
+    ) -> Tuple[bool, KeyValueCache]:
+        names = lambda x: ("cache", f"cached_{x}")
+        is_initialized = self.has_variable(*names("key"))
+        max_length = self.context_length
+        key_shape = key.shape[:-3] + (max_length, self.num_heads, self.head_dim)
+        value_shape = value.shape[:-3] + (max_length, self.num_heads, self.head_dim)
+        c_key = self.variable(*names("key"), jnp.zeros, key_shape, key.dtype)
+        c_val = self.variable(*names("value"), jnp.zeros, value_shape, value.dtype)
+        c_idx = self.variable(*names("idx"), lambda: jnp.array(0, dtype=jnp.int64))
+        return is_initialized, KeyValueCache(c_key, c_val, c_idx)
 
     @nn.compact
     def __call__(
@@ -91,7 +147,6 @@ class MultiHeadAttention(nn.Module):
         states: Float[Array, "... S F"],
         mask: Bool[Array, "... S"],
         hooks: Optional[HookMap] = None,
-        cache_entry: Optional[CacheEntry] = None,
     ) -> Float[Array, "... S F"]:
         """Applies the multi-headed attention module to the input array.
 
@@ -127,18 +182,49 @@ class MultiHeadAttention(nn.Module):
         query, key, value = self._apply_qkv_hooks(qkv_states, hooks)
 
         # If using a cache, append the new keys and values to the cached values.
-        if cache_entry is not None:
-            offset = cache_entry.past_keys.shape[1]
-            key, value = cache_entry.append(key, value)
-        else:
-            offset = 0
+        if self.decode:
+            is_initialized, cache = self.init_cache(key, value)
+            if is_initialized:
+                (*batch_dims, max_length, num_heads, head_dim) = cache.key.value.shape
+
+                # shape check of cached keys against query input
+                # expected_shape = tuple(batch_dims) + (1, num_heads, head_dim)
+                # if expected_shape != query.shape:
+                #     raise ValueError(
+                #         "Autoregressive cache shape error, "
+                #         "expected query shape %s instead got %s."
+                #         % (expected_shape, query.shape)
+                #     )
+
+                # update key, value caches with our new 1d spatial slices
+                cur_index = cache.index.value
+                indices = (0,) * len(batch_dims) + (cur_index, 0, 0)
+                key = lax.dynamic_update_slice(cache.key.value, key, indices)
+                value = lax.dynamic_update_slice(cache.value.value, value, indices)
+                cache.key.value = key
+                cache.value.value = value
+                cache.index.value = cache.index.value + 1
+
+                # causal mask for cached decoder self-attention:
+                # our single query position should only attend to those key
+                # positions that have already been generated and cached,
+                # not the remaining zero elements.
+                mask = combine_masks(
+                    jnp.tril(
+                        jnp.ones((1, 1, max_length), dtype="bool"), k=int(cur_index)
+                    ),
+                    jnp.broadcast_to(
+                        jnp.arange(max_length) <= cur_index,
+                        tuple(batch_dims) + (1, 1, max_length),
+                    ),
+                )
 
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
 
         # Apply the causal mask to the attention weights.
-        scores = apply_causal_mask(mask, scores, offset)
+        scores = apply_causal_mask(mask, scores, 0)
         scores = apply_hooks(HookPoint.ATTN_SCORES, hooks, scores)
 
         # Normalise the attention weights
@@ -153,7 +239,6 @@ class MultiHeadAttention(nn.Module):
         merged_z = self._merge_heads(z)
         output = init_dense(name="c_proj", features=self.features)(merged_z)
         output = apply_hooks(HookPoint.ATTN_OUTPUT, hooks, output)
-
         return output
 
     def _apply_qkv_hooks(

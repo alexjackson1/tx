@@ -9,12 +9,13 @@ from tx.modules.transformer import TransformerConfig
 
 class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
     tx_config = TransformerConfig(
+        vocab_dim=50257,
+        context_length=1024,
+        model_dim=768,
+        num_layers=12,
         num_heads=12,
         head_dim=64,
-        model_dim=768,
         mlp_dim=3072,
-        num_layers=12,
-        vocab_dim=50257,
         layer_norm_eps=1e-5,
         init_range=0.02,
     )
