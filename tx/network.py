@@ -5,7 +5,6 @@ from optax import Params
 from transformers import PreTrainedTokenizerBase
 
 from .modules import Transformer, TransformerConfig, HookMap
-from .models.gpt2 import PretrainedGPT2Model
 
 
 DArray = Union[Dict[str, Array], Dict[str, "DArray"]]
