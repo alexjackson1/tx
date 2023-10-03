@@ -1,5 +1,5 @@
 from jaxtyping import Array
-from typing import Dict
+from typing import Dict, Optional
 
 import jax.numpy as jnp
 from transformers import FlaxGPT2LMHeadModel
@@ -19,6 +19,17 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
         layer_norm_eps=1e-5,
         init_range=0.02,
     )
+
+    @classmethod
+    def make_config(
+        cls,
+        decode: bool = False,
+        dtype: Optional[jnp.dtype] = None,
+        param_dtype: jnp.dtype = jnp.float64,
+    ) -> TransformerConfig:
+        return cls.tx_config.replace(
+            decode=decode, dtype=dtype, param_dtype=param_dtype
+        )
 
     @classmethod
     def attn_params(cls, attn):

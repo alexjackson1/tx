@@ -1,5 +1,8 @@
 from jaxtyping import Int, Array, Float
 from typing import Dict, List, Optional, Tuple, Union
+
+import jax.numpy as jnp
+import jax.random as jr
 from optax import Params
 
 from transformers import PreTrainedTokenizerBase
@@ -56,36 +59,22 @@ class GenerativeModel:
         self.config = config
         self.decode = config.decode
 
-        if self.decode:
-            self.reset_cache()
-
-        self.mutable = ["cache"] if self.config.decode else []
-
         if tokenizer is not None:
             self.tokenizer = configure_tokenizer(tokenizer)
 
         if params is not None:
             self.params = params
 
+        if self.decode:
+            self.mutable = ["cache"]
+        else:
+            self.mutable = []
+
         if hooks is not None:
             self.hooks = hooks
             self.mutable = list(set(self.mutable).union(set(hook_collections)))
         else:
             self.hooks = HookMap()
-
-    def reset_cache(self) -> None:
-        self.cache = {}
-
-    def set_tokenizer(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        self.tokenizer = configure_tokenizer(tokenizer)
-
-    def set_params(self, params: Params) -> None:
-        self.params = params
-
-    def set_hooks(self, hooks: HookMap, collections: List[str] = []) -> None:
-        self.mutable = ["cache"] if self.config.decode else []
-        self.mutable = list(set(self.mutable).union(set(collections)))
-        self.hooks = hooks
 
     def to_tokens(
         self,
@@ -130,20 +119,34 @@ class GenerativeModel:
 
         return list(map(self.to_str, tokens))
 
-    def model(self) -> Transformer:
-        return Transformer.from_config(self.config)
+    def init_model(self) -> Transformer:
+        model = Transformer.from_config(self.config)
+        return model
+
+    def init_cache(self, model: Transformer) -> Params:
+        variables = model.init(jr.PRNGKey(0), jnp.ones((10,), jnp.int32))
+        self.cache = variables["cache"]
 
     def __call__(self, tokens: Tokens) -> Tuple[Logits, Params]:
         if self.params is None:
             raise ValueError("Params not initialised")
 
+        # Initialise the model
+        model = self.init_model()
+
+        # Initialise the cache if using
+        if self.decode and self.cache is None:
+            self.init_cache(model)
+
+        # Prepare the model variables (params and optional cache)
         variables = {"params": self.params}
         if self.decode:
             variables["cache"] = self.cache
 
-        model = self.model()
+        # Apply the model to the input token(s)
         logits, state = model.apply(variables, tokens, self.hooks, mutable=self.mutable)
 
+        # Store the updated cache state
         if self.decode:
             self.cache = state["cache"]
 

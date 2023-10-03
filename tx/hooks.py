@@ -15,6 +15,22 @@ class Hook(NamedTuple):
     apply: HookFn
 
 
+def store_hook(
+    x: Array,
+    hook_point: "HookPoint" = None,
+    module: nn.Module = None,
+    **kwargs,
+) -> Array:
+    """Stores the given array in the given module."""
+    assert module is not None, "Module must be defined"
+    assert hook_point is not None, "Hook point must be defined"
+    module.sow("intermediates", hook_point.value, x)
+    return x
+
+
+StoreHook = Hook(store_hook)
+
+
 class HookPoint(Enum):
     """The points at which hooks can be applied."""
 

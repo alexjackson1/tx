@@ -1,6 +1,6 @@
 from jax.config import config
 
-from tx.modules.hooks import Hook, HookPoint
+from tx.hooks import Hook, HookPoint
 
 config.update("jax_enable_x64", True)
 

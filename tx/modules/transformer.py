@@ -9,7 +9,7 @@ import flax.linen as nn
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
-from .hooks import HookMap, HookPoint, apply_hooks
+from ..hooks import HookMap, HookPoint, apply_hooks
 
 
 @dataclass
@@ -55,6 +55,11 @@ class TransformerConfig:
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
+
+    def replace(self, **kwargs):
+        """Returns a new `TransformerConfig` object with the specified
+        attributes replaced."""
+        return TransformerConfig(**{**self.__dict__, **kwargs})
 
 
 class MLP(nn.Module):

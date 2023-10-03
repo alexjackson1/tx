@@ -16,7 +16,7 @@ import jax.random as jr
 import jax.numpy as jnp
 from optax import Params
 
-from tx.modules import TransformerConfig, Transformer, Hook
+from tx import TransformerConfig, Transformer
 
 
 @pytest.fixture

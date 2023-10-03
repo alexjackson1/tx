@@ -1,6 +1,5 @@
 from jax.config import config
 
-from tx.modules.hooks import Hook, HookPoint
 
 config.update("jax_enable_x64", True)
 
@@ -14,18 +13,14 @@ from jaxtyping import Array
 import pytest
 from pytest_mock import MockerFixture
 
+import jax
 import jax.random as jr
 import jax.numpy as jnp
 import flax.linen as nn
 from optax import Params
 
-from tx.modules import (
-    TransformerConfig,
-    Transformer,
-    MLP,
-    MultiHeadAttention,
-    LayerNorm,
-)
+from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
+from tx.hooks import Hook, HookMap, HookPoint, StoreHook
 
 
 @pytest.fixture
@@ -290,6 +285,18 @@ def test_layer_norm_normalized_hook_called(
 
     output.block_until_ready()
     stub.assert_called_once()
+
+
+def test_transformer_embed_hook_stores_activation(transformer, transformer_params):
+    hooks = {"embed_hook": StoreHook}
+    assert hooks[HookPoint.EMBED.value] is not None
+
+    variables = {"params": transformer_params}
+    inputs = jnp.ones((256,), jnp.int32)
+    _, state = transformer.apply(variables, inputs, hooks, mutable=["intermediates"])
+
+    print(jax.tree_util.tree_map(lambda a: a.shape, state["intermediates"]))
+    assert state["intermediates"]["embed_hook"][0].shape == (256, 768)
 
 
 if __name__ == "__main__":
