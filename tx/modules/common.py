@@ -154,7 +154,8 @@ class PosEmbed(nn.Module):
             (self.num_embeddings, self.features),
             self.param_dtype,
         )
-        return embedding[offset : tokens.shape[-1] + offset, :]
+        embed = embedding[offset : tokens.shape[-1] + offset, :]
+        return jnp.broadcast_to(embed, (*tokens.shape, self.features))
 
 
 class Unembed(nn.Module):
