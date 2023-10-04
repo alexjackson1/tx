@@ -8,25 +8,26 @@ def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:
     """Convert `tx` attention parameters to `tfs` attention parameters."""
     model_dim, num_heads, head_dim = (cfg.model_dim, cfg.num_heads, cfg.head_dim)
 
-    def split_attn_params(c_attn: Params) -> Params:
-        rs_kernel = lambda x: jnp.reshape(x, (model_dim, num_heads, head_dim))
-        rs_kernel_1 = lambda x: jnp.transpose(rs_kernel(x), (1, 0, 2))
-        q, k, v = jnp.split(c_attn["kernel"], 3, axis=-1)
-        q, k, v = rs_kernel_1(q), rs_kernel_1(k), rs_kernel_1(v)
-
-        rs_bias = lambda x: jnp.reshape(x, (num_heads, head_dim))
-        q_b, k_b, v_b = jnp.split(c_attn["bias"], 3, axis=-1)
-        q_b, k_b, v_b = rs_bias(q_b), rs_bias(k_b), rs_bias(v_b)
+    def split_attn_params(attn: Params) -> Params:
+        q, k, v = (
+            jnp.transpose(attn["query"]["kernel"], (1, 0, 2)),
+            jnp.transpose(attn["key"]["kernel"], (1, 0, 2)),
+            jnp.transpose(attn["value"]["kernel"], (1, 0, 2)),
+        )
+        q_b, k_b, v_b = (
+            attn["query"]["bias"],
+            attn["key"]["bias"],
+            attn["value"]["bias"],
+        )
 
         return {"W_Q": q, "W_K": k, "W_V": v, "b_Q": q_b, "b_K": k_b, "b_V": v_b}
 
     def reshape_proj_params(c_proj: Params) -> Params:
         out_k = jnp.reshape(c_proj["kernel"], (num_heads, head_dim, model_dim))
-        out_b = jnp.reshape(c_proj["bias"], (model_dim,))
+        out_b = c_proj["bias"]
         return {"W_O": out_k, "b_O": out_b}
 
-    c_attn, c_proj = params["c_attn"], params["c_proj"]
-    return {**split_attn_params(c_attn), **reshape_proj_params(c_proj)}
+    return {**split_attn_params(params), **reshape_proj_params(params["c_proj"])}
 
 
 def tfs_layer_norm_params(_cfg, params: Params) -> Params:

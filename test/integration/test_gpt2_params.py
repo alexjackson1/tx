@@ -11,12 +11,18 @@ from jaxtyping import Array
 import pytest
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import flax.linen as nn
 
 from transformers import GPT2TokenizerFast
-from transformers.models.gpt2.modeling_flax_gpt2 import FlaxGPT2Block, GPT2Config
+from transformers.models.gpt2.modeling_flax_gpt2 import (
+    FlaxGPT2Block,
+    GPT2Config,
+    FlaxGPT2Attention,
+)
 
 from tx.modules import (
+    MultiHeadAttention,
     Embed,
     LayerNorm,
     PosEmbed,
@@ -120,6 +126,32 @@ def hf_transformer_block(params, name: str, input: Array) -> Array:
     return jnp.squeeze(output, axis=0)
 
 
+def tx_attention(params, name: str, input: Array) -> Array:
+    module = MultiHeadAttention(
+        features=768,
+        num_heads=12,
+        head_dim=64,
+        dtype=jnp.float64,
+        param_dtype=jnp.float64,
+    )
+    variables = {"params": params[name]["attn"]}
+    output = module.apply(
+        variables, input, nn.make_causal_mask(jnp.ones(input.shape[:-1]), dtype="bool")
+    )
+    return output
+
+
+def hf_attention(params, name: str, input: Array) -> Array:
+    module = FlaxGPT2Attention(
+        GPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
+        dtype=jnp.float64,
+    )
+    input = jnp.expand_dims(input, axis=0)
+    variables = {"params": params["transformer"]["h"][name]["attn"]}
+    output = module.apply(variables, input)[0]
+    return jnp.squeeze(output, axis=0)
+
+
 def tx_ln_f(gpt2_params, input: Array) -> Array:
     module = LayerNorm(epsilon=1e-5, dtype=jnp.float64, param_dtype=jnp.float64)
     return tx_apply(module, gpt2_params["ln_f"], input)
@@ -155,6 +187,18 @@ def hf_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Arr
         "bias": jnp.zeros((vocab_dim,)),
     }
     return hf_apply(module, params, input)
+
+
+def test_attn_with_gpt2_params(gpt2: PretrainedGPT2Model):
+    gpt2_params = gpt2.to_params()
+
+    input = jr.uniform(jax.random.PRNGKey(0), (1024, 768), dtype=jnp.float64)
+
+    tx_output = tx_attention(gpt2_params, "block_0", input)
+    hf_output = hf_attention(gpt2._params, "0", input)
+
+    assert tx_output.shape == hf_output.shape
+    assert jnp.allclose(tx_output, hf_output, atol=1e-6, rtol=1e-6)
 
 
 def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFast):

@@ -20,12 +20,39 @@ from tx.models import PretrainedGPT2Model
 from examples.params import tfs_attention_params
 
 from tx.modules import MultiHeadAttention as TxAttention, TransformerConfig
-from tx.params import tx_to_flax
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
 
 
 PRECISION = 1e-6
+
+
+def tx_to_flax(config: TransformerConfig, tx_params: Params) -> Params:
+    num_heads, head_dim, model_dim = (
+        config.num_heads,
+        config.head_dim,
+        config.model_dim,
+    )
+
+    q_kernel = tx_params["query"]["kernel"]
+    k_kernel = tx_params["key"]["kernel"]
+    v_kernel = tx_params["value"]["kernel"]
+    o_kernel = jnp.reshape(
+        tx_params["c_proj"]["kernel"], (num_heads, head_dim, model_dim)
+    )
+
+    q_bias = tx_params["query"]["bias"]
+    k_bias = tx_params["key"]["bias"]
+    v_bias = tx_params["value"]["bias"]
+    o_bias = tx_params["c_proj"]["bias"]
+
+    flax_params = {}
+    flax_params["query"] = {"kernel": q_kernel, "bias": q_bias}
+    flax_params["key"] = {"kernel": k_kernel, "bias": k_bias}
+    flax_params["value"] = {"kernel": v_kernel, "bias": v_bias}
+    flax_params["out"] = {"kernel": o_kernel, "bias": o_bias}
+
+    return flax_params
 
 
 @pytest.fixture

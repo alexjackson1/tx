@@ -1,3 +1,4 @@
+from functools import partial
 from jaxtyping import Array
 from typing import Dict, Optional
 
@@ -33,11 +34,27 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
 
     @classmethod
     def attn_params(cls, attn):
+        cfg = cls.tx_config
+
+        kernel_shape = (cfg.num_heads, cfg.head_dim, cfg.model_dim)
+        reshape_kernel = lambda k: jnp.reshape(k, kernel_shape)
+
+        qkv_kernel = attn["c_attn"]["kernel"]
+        qkv_kernels = jnp.split(qkv_kernel, 3, axis=0)
+        qkv_kernels = map(reshape_kernel, qkv_kernels)
+        qkv_kernels = tuple(map(partial(jnp.transpose, axes=(2, 0, 1)), qkv_kernels))
+
+        qkv_bias = attn["c_attn"]["bias"]
+        qkv_biases = jnp.split(qkv_bias, 3, axis=0)
+        qkv_biases = tuple(map(lambda x: jnp.reshape(x, (12, 64)), qkv_biases))
+
+        q_kernel, k_kernel, v_kernel = qkv_kernels
+        q_bias, k_bias, v_bias = qkv_biases
+
         return {
-            "c_attn": {
-                "kernel": jnp.transpose(attn["c_attn"]["kernel"]),
-                "bias": attn["c_attn"]["bias"],
-            },
+            "query": {"kernel": q_kernel, "bias": q_bias},
+            "key": {"kernel": k_kernel, "bias": k_bias},
+            "value": {"kernel": v_kernel, "bias": v_bias},
             "c_proj": {
                 "kernel": jnp.transpose(attn["c_proj"]["kernel"]),
                 "bias": attn["c_proj"]["bias"],

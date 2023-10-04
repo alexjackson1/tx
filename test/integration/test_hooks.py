@@ -295,7 +295,6 @@ def test_transformer_embed_hook_stores_activation(transformer, transformer_param
     inputs = jnp.ones((256,), jnp.int32)
     _, state = transformer.apply(variables, inputs, hooks, mutable=["intermediates"])
 
-    print(jax.tree_util.tree_map(lambda a: a.shape, state["intermediates"]))
     assert state["intermediates"]["embed_hook"][0].shape == (256, 768)
 
 

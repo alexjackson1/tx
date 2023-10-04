@@ -233,10 +233,14 @@ class MultiHeadAttention(nn.Module):
         )
 
         # Apply a linear transformation to the input tensor.
-        hidden_states = init_dense(name="c_attn", features=3 * self.features)(states)
+        # hidden_states = init_dense(name="c_attn", features=3 * self.features)(states)
+        qkv_states = (
+            init_dense(name="query", features=(self.num_heads, self.head_dim))(states),
+            init_dense(name="key", features=(self.num_heads, self.head_dim))(states),
+            init_dense(name="value", features=(self.num_heads, self.head_dim))(states),
+        )
 
         # Split the hidden states into query, key, and value.
-        qkv_states = self._split_outputs(hidden_states)
         query, key, value = self._apply_qkv_hooks(qkv_states, hooks)
 
         # If using a cache, append the new keys and values to the cached values.
@@ -278,14 +282,6 @@ class MultiHeadAttention(nn.Module):
             ret_vals.append(self.apply_hooks(hook_point, hooks, array))
 
         return ret_vals
-
-    def _split_outputs(self, states: Array):
-        """Splits the hidden states into query, key, and value."""
-        return map(self._split_heads, jnp.split(states, 3, axis=-1))
-
-    def _split_heads(self, states: Array):
-        """Splits the hidden states into attention heads."""
-        return states.reshape(states.shape[:-1] + (self.num_heads, self.head_dim))
 
     def _merge_heads(self, states: Array):
         """Merges the attention heads into hidden states."""
