@@ -191,17 +191,16 @@ class TransformerBlock(nn.Module):
         x_norm = init_layer_norm(name="ln_1")(x, hooks)
 
         # Multi-headed attention
-        mask = nn.make_causal_mask(jnp.ones(x.shape[:-1]), dtype="bool")
         attn_output = MultiHeadAttention(
             name="attn",
             num_heads=self.num_heads,
             head_dim=self.head_dim,
             features=self.model_dim,
             init_range=self.init_range,
-            decode=self.decode,
+            # decode=self.decode,
             dtype=dtype,
             param_dtype=self.param_dtype,
-        )(x_norm, mask, hooks)
+        )(x_norm, hooks=hooks)
 
         # First residual connection
         x = attn_output + x
@@ -311,7 +310,7 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed)
+        pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed, module=self)
 
         # Combine the embeddings
         x = embed + pos_embed

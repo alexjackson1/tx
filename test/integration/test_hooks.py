@@ -9,18 +9,17 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 from jaxtyping import Array
+from typing import Sequence
 
 import pytest
 from pytest_mock import MockerFixture
 
-import jax
 import jax.random as jr
 import jax.numpy as jnp
-import flax.linen as nn
 from optax import Params
 
 from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
-from tx.hooks import Hook, HookMap, HookPoint, StoreHook
+from tx.hooks import Hook, HookPoint, StoreHook
 
 
 @pytest.fixture
@@ -71,9 +70,7 @@ def mlp_params(rng, mlp: MLP) -> Params:
 def multi_head_attention_params(
     rng, multi_head_attention: MultiHeadAttention
 ) -> Params:
-    return multi_head_attention.init(
-        rng, jnp.ones((1024, 768)), nn.make_causal_mask(jnp.ones(1024))
-    )["params"]
+    return multi_head_attention.init(rng, jnp.ones((1024, 768)))["params"]
 
 
 @pytest.fixture
@@ -89,213 +86,212 @@ def make_hook_fn(stub):
     return hook_fn
 
 
-def test_transformer_embed_hook_called(
-    mocker: MockerFixture, transformer, transformer_params
+@pytest.mark.parametrize(
+    "hook_point",
+    [HookPoint.EMBED, HookPoint.POS_EMBED, HookPoint.RESIDUAL, HookPoint.FINAL_OUTPUT],
+    ids=lambda hp: hp.value,
+)
+def test_transformer_hooks_called(
+    mocker: MockerFixture,
+    transformer: Transformer,
+    transformer_params: Params,
+    hook_point: HookPoint,
 ):
-    stub = mocker.stub(name="embed_hook_stub")
+    stub = mocker.stub()
     variables = {"params": transformer_params}
     inputs = jnp.ones((256,), jnp.int32)
-    hooks = {HookPoint.EMBED.value: Hook(make_hook_fn(stub))}
-    output = transformer.apply(variables, inputs, hooks)
+    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    transformer.apply(variables, inputs, hooks)
 
-    output.block_until_ready()
-    stub.assert_called_once()
+    if hook_point != HookPoint.RESIDUAL:
+        stub.assert_called_once()
+    else:
+        stub.assert_called()
 
 
-def test_transformer_pos_embed_hook_called(
-    mocker: MockerFixture, transformer, transformer_params
+@pytest.mark.parametrize(
+    "hook_point",
+    [HookPoint.MLP_PRE_ACTIVATION, HookPoint.MLP_POST_ACTIVATION],
+    ids=lambda hp: hp.value,
+)
+def test_mlp_hooks_called(
+    rng: jr.KeyArray,
+    mocker: MockerFixture,
+    mlp: MLP,
+    mlp_params: Params,
+    hook_point: HookPoint,
 ):
-    stub = mocker.stub(name="pos_embed_hook_stub")
-    variables = {"params": transformer_params}
-    inputs = jnp.ones((256,), jnp.int32)
-    hooks = {HookPoint.POS_EMBED.value: Hook(make_hook_fn(stub))}
-    output = transformer.apply(variables, inputs, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_transformer_residual_hook_called(
-    mocker: MockerFixture, transformer, transformer_params
-):
-    stub = mocker.stub(name="residual_hook_stub")
-    variables = {"params": transformer_params}
-    inputs = jnp.ones((256,), jnp.int32)
-    hooks = {HookPoint.RESIDUAL.value: Hook(make_hook_fn(stub))}
-    output = transformer.apply(variables, inputs, hooks)
-
-    output.block_until_ready()
-    stub.assert_called()
-
-
-def test_transformer_final_output_hook_called(
-    mocker: MockerFixture, transformer, transformer_params
-):
-    stub = mocker.stub(name="final_output_hook_stub")
-    variables = {"params": transformer_params}
-    inputs = jnp.ones((256,), jnp.int32)
-    hooks = {HookPoint.FINAL_OUTPUT.value: Hook(make_hook_fn(stub))}
-    output = transformer.apply(variables, inputs, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_mlp_pre_activation_hook_called(rng, mocker: MockerFixture, mlp, mlp_params):
-    stub = mocker.stub(name="mlp_pre_activation_hook_stub")
+    stub = mocker.stub()
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
-    hooks = {HookPoint.MLP_PRE_ACTIVATION.value: Hook(make_hook_fn(stub))}
-    output = mlp.apply(variables, inputs, hooks)
+    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    mlp.apply(variables, inputs, hooks)
 
-    output.block_until_ready()
     stub.assert_called_once()
 
 
-def test_mlp_post_activation_hook_called(rng, mocker: MockerFixture, mlp, mlp_params):
-    stub = mocker.stub(name="mlp_post_activation_hook_stub")
-    variables = {"params": mlp_params}
-    inputs = jr.uniform(rng, (256, 256))
-    hooks = {HookPoint.MLP_POST_ACTIVATION.value: Hook(make_hook_fn(stub))}
-    output = mlp.apply(variables, inputs, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_query_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
+@pytest.mark.parametrize(
+    "hook_point",
+    [
+        HookPoint.ATTN_QUERY,
+        HookPoint.ATTN_KEY,
+        HookPoint.ATTN_VALUE,
+        HookPoint.ATTN_SCORES,
+        HookPoint.ATTN_WEIGHTS,
+        HookPoint.ATTN_Z,
+        HookPoint.ATTN_OUTPUT,
+    ],
+    ids=lambda hp: hp.value,
+)
+def test_attention_hooks_called(
+    rng: jr.KeyArray,
+    mocker: MockerFixture,
+    multi_head_attention: MultiHeadAttention,
+    multi_head_attention_params: Params,
+    hook_point: HookPoint,
 ):
-    stub = mocker.stub(name="multi_head_attention_query_hook_stub")
+    stub = mocker.stub()
     variables = {"params": multi_head_attention_params}
     inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_QUERY.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
+    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    multi_head_attention.apply(variables, inputs, hooks)
 
-    output.block_until_ready()
     stub.assert_called_once()
 
 
-def test_multi_head_attention_key_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
+@pytest.mark.parametrize(
+    "hook_point", [HookPoint.LN_STD, HookPoint.LN_NORMALIZED], ids=lambda hp: hp.value
+)
+def test_layer_norm_hooks_called(
+    rng: jr.KeyArray,
+    mocker: MockerFixture,
+    layer_norm: LayerNorm,
+    layer_norm_params: Params,
+    hook_point: HookPoint,
 ):
-    stub = mocker.stub(name="multi_head_attention_key_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_KEY.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_value_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
-):
-    stub = mocker.stub(name="multi_head_attention_value_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_VALUE.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_scores_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
-):
-    stub = mocker.stub(name="multi_head_attention_scores_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_SCORES.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_weights_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
-):
-    stub = mocker.stub(name="multi_head_attention_weights_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_WEIGHTS.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_z_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
-):
-    stub = mocker.stub(name="multi_head_attention_z_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_Z.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_multi_head_attention_output_hook_called(
-    rng, mocker: MockerFixture, multi_head_attention, multi_head_attention_params
-):
-    stub = mocker.stub(name="multi_head_attention_output_hook_stub")
-    variables = {"params": multi_head_attention_params}
-    inputs = jr.uniform(rng, (1024, 768))
-    mask = nn.make_causal_mask(jnp.ones(1024), dtype="bool")
-    hooks = {HookPoint.ATTN_OUTPUT.value: Hook(make_hook_fn(stub))}
-    output = multi_head_attention.apply(variables, inputs, mask, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_layer_norm_std_hook_called(
-    rng, mocker: MockerFixture, layer_norm, layer_norm_params
-):
-    stub = mocker.stub(name="layer_norm_std_hook_stub")
+    stub = mocker.stub()
     variables = {"params": layer_norm_params}
     inputs = jr.uniform(rng, (256,))
-    hooks = {HookPoint.LN_STD.value: Hook(make_hook_fn(stub))}
-    output = layer_norm.apply(variables, inputs, hooks)
+    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    layer_norm.apply(variables, inputs, hooks)
 
-    output.block_until_ready()
     stub.assert_called_once()
 
 
-def test_layer_norm_normalized_hook_called(
-    rng, mocker: MockerFixture, layer_norm, layer_norm_params
+SEQ_LENGTH = 256
+
+
+def format_ids(val):
+    if isinstance(val, HookPoint):
+        return val.value
+    elif isinstance(val, tuple):
+        return val[0]
+    else:
+        return None
+
+
+@pytest.mark.parametrize(
+    "hook_point,expected",
+    [
+        (HookPoint.EMBED, (SEQ_LENGTH, 768)),
+        (HookPoint.POS_EMBED, (SEQ_LENGTH, 768)),
+        (HookPoint.RESIDUAL, (SEQ_LENGTH, 768)),
+        (HookPoint.FINAL_OUTPUT, (SEQ_LENGTH, 768)),
+    ],
+    ids=format_ids,
+)
+def test_transformer_hooks_can_store_values(
+    transformer: Transformer,
+    transformer_params: Params,
+    hook_point: HookPoint,
+    expected: Sequence[int],
 ):
-    stub = mocker.stub(name="layer_norm_normalized_hook_stub")
-    variables = {"params": layer_norm_params}
-    inputs = jr.uniform(rng, (256,))
-    hooks = {HookPoint.LN_NORMALIZED.value: Hook(make_hook_fn(stub))}
-    output = layer_norm.apply(variables, inputs, hooks)
-
-    output.block_until_ready()
-    stub.assert_called_once()
-
-
-def test_transformer_embed_hook_stores_activation(transformer, transformer_params):
-    hooks = {"embed_hook": StoreHook}
-    assert hooks[HookPoint.EMBED.value] is not None
+    hooks = {hook_point.value: StoreHook}
 
     variables = {"params": transformer_params}
-    inputs = jnp.ones((256,), jnp.int32)
+    inputs = jnp.ones((SEQ_LENGTH,), jnp.int32)
     _, state = transformer.apply(variables, inputs, hooks, mutable=["intermediates"])
 
-    assert state["intermediates"]["embed_hook"][0].shape == (256, 768)
+    assert state["intermediates"][hook_point.value][0].shape == expected
+
+
+@pytest.mark.parametrize(
+    "hook_point,expected",
+    [
+        (HookPoint.MLP_PRE_ACTIVATION, (SEQ_LENGTH, 3072)),
+        (HookPoint.MLP_POST_ACTIVATION, (SEQ_LENGTH, 3072)),
+    ],
+    ids=format_ids,
+)
+def test_mlp_hooks_can_store_values(
+    rng: jr.KeyArray,
+    mlp: MLP,
+    mlp_params: Params,
+    hook_point: HookPoint,
+    expected: Sequence[int],
+):
+    hooks = {hook_point.value: StoreHook}
+
+    variables = {"params": mlp_params}
+    inputs = jr.uniform(rng, (256, 256))
+    _, state = mlp.apply(variables, inputs, hooks, mutable=["intermediates"])
+
+    assert state["intermediates"][hook_point.value][0].shape == expected
+
+
+@pytest.mark.parametrize(
+    "hook_point,expected",
+    [
+        (HookPoint.ATTN_QUERY, (SEQ_LENGTH, 12, 64)),
+        (HookPoint.ATTN_KEY, (SEQ_LENGTH, 12, 64)),
+        (HookPoint.ATTN_VALUE, (SEQ_LENGTH, 12, 64)),
+        (HookPoint.ATTN_SCORES, (12, SEQ_LENGTH, SEQ_LENGTH)),
+        (HookPoint.ATTN_WEIGHTS, (12, SEQ_LENGTH, SEQ_LENGTH)),
+        (HookPoint.ATTN_Z, (SEQ_LENGTH, 12, 64)),
+        (HookPoint.ATTN_OUTPUT, (SEQ_LENGTH, 768)),
+    ],
+    ids=format_ids,
+)
+def test_attention_hooks_can_store_values(
+    rng: jr.KeyArray,
+    multi_head_attention: MultiHeadAttention,
+    multi_head_attention_params: Params,
+    hook_point: HookPoint,
+    expected: Sequence[int],
+):
+    hooks = {hook_point.value: StoreHook}
+
+    variables = {"params": multi_head_attention_params}
+    inputs = jr.uniform(rng, (SEQ_LENGTH, 768))
+    _, state = multi_head_attention.apply(
+        variables, inputs, hooks, mutable=["intermediates"]
+    )
+
+    assert state["intermediates"][hook_point.value][0].shape == expected
+
+
+@pytest.mark.parametrize(
+    "hook_point,expected",
+    [
+        (HookPoint.LN_STD, (SEQ_LENGTH, SEQ_LENGTH)),
+        (HookPoint.LN_NORMALIZED, (SEQ_LENGTH, SEQ_LENGTH)),
+    ],
+    ids=format_ids,
+)
+def test_layer_norm_hooks_can_store_values(
+    rng: jr.KeyArray,
+    layer_norm: LayerNorm,
+    layer_norm_params: Params,
+    hook_point: HookPoint,
+    expected: Sequence[int],
+):
+    hooks = {hook_point.value: StoreHook}
+
+    variables = {"params": layer_norm_params}
+    inputs = jr.uniform(rng, (SEQ_LENGTH, SEQ_LENGTH))
+    _, state = layer_norm.apply(variables, inputs, hooks, mutable=["intermediates"])
+
+    assert state["intermediates"][hook_point.value][0].shape == expected
 
 
 if __name__ == "__main__":

@@ -169,13 +169,7 @@ def test_unembed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
 def test_transformer_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
     model = tx.Transformer.from_config(config)
 
-    input: Int[Array, "S"] = jnp.ones(
-        (
-            *batch_dims,
-            4,
-        ),
-        dtype=jnp.int32,
-    )
+    input: Int[Array, "S"] = jnp.ones((*batch_dims, 4), dtype=jnp.int32)
     variables = model.init(RNG, input)
 
     assert len(variables["params"]) == 16

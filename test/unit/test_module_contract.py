@@ -84,14 +84,12 @@ def test_attention_contract(
     init_input: Float[Array, "... S F"] = jr.uniform(
         rng, (*batch_dims, INIT_LEN, config.model_dim)
     )
-    init_mask = nn.make_causal_mask(jnp.ones((INIT_LEN,)))
-    variables = layer.init(rng, init_input, init_mask)
+    variables = layer.init(rng, init_input)
 
     apply_input: Float[Array, "... S F"] = jr.uniform(
         rng, (*batch_dims, APPLY_LEN, config.model_dim)
     )
-    apply_mask = nn.make_causal_mask(jnp.ones((APPLY_LEN,)))
-    output: Float[Array, "... S F"] = layer.apply(variables, apply_input, apply_mask)
+    output: Float[Array, "... S F"] = layer.apply(variables, apply_input)
     assert output.shape == (*batch_dims, APPLY_LEN, config.model_dim)
 
 

@@ -82,6 +82,7 @@ class GenerativeModel:
         prepend_bos: bool = False,
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
+        extra_batch_dims=0,
     ) -> Tokens:
         if self.tokenizer is None:
             raise ValueError("Tokenizer not provided")
@@ -97,7 +98,8 @@ class GenerativeModel:
             max_length=max_length,
             add_special_tokens=add_special_tokens,
         )
-        return output["input_ids"][0]
+        batch_dims = (0,) * extra_batch_dims
+        return jnp.reshape(output["input_ids"][0], (*batch_dims, -1))
 
     def to_str(self, tokens: Tokens, clean_spaces: bool = False) -> String:
         if self.tokenizer is None:
@@ -124,8 +126,10 @@ class GenerativeModel:
         return model
 
     def init_cache(self, model: Transformer) -> Params:
-        variables = model.init(jr.PRNGKey(0), jnp.ones((10,), jnp.int32))
+        input_ids = jnp.ones((self.config.context_length,), jnp.int32)
+        variables = model.init(jr.PRNGKey(0), input_ids)
         self.cache = variables["cache"]
+        return self.cache
 
     def __call__(self, tokens: Tokens) -> Tuple[Logits, Params]:
         if self.params is None:

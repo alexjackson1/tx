@@ -123,9 +123,7 @@ def tx_attention(params, name: str, input: Array) -> Array:
         param_dtype=DTYPE,
     )
     variables = {"params": params[name]["attn"]}
-    output = module.apply(
-        variables, input, nn.make_causal_mask(jnp.ones(input.shape[:-1]), dtype="bool")
-    )
+    output = module.apply(variables, input)
     return output
 
 

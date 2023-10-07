@@ -106,8 +106,7 @@ def test_compare_tfs_implementation(
         tfs_output: Array = tfs_module.apply({"params": tfs_params}, random_input)
 
     # Implementation from tx
-    mask = nn.make_causal_mask(jnp.ones((SEQ_LEN,)), dtype="bool")
-    tx_output: Array = tx_module.apply({"params": tx_params}, random_input, mask)
+    tx_output: Array = tx_module.apply({"params": tx_params}, random_input)
 
     assert jnp.allclose(tfs_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
@@ -135,7 +134,7 @@ def test_compare_flax_implementation(
     )
 
     # Implementation from tx
-    tx_output: Array = tx_module.apply({"params": tx_params}, random_input, mask)
+    tx_output: Array = tx_module.apply({"params": tx_params}, random_input)
 
     assert jnp.allclose(flax_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
