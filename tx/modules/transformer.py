@@ -197,7 +197,7 @@ class TransformerBlock(nn.Module):
             head_dim=self.head_dim,
             features=self.model_dim,
             init_range=self.init_range,
-            # decode=self.decode,
+            decode=self.decode,
             dtype=dtype,
             param_dtype=self.param_dtype,
         )(x_norm, hooks=hooks)

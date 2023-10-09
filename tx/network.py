@@ -1,5 +1,5 @@
-from jaxtyping import Int, Array, Float
-from typing import Dict, List, Optional, Tuple, Union
+from jaxtyping import Array, Float
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -32,7 +32,7 @@ def configure_tokenizer(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokeniz
     return tokenizer
 
 
-Tokens = Int[Array, "S"]
+Tokens = Union[int, Iterable[int]]
 String = str
 TokensOrString = Union[Tokens, String]
 Logits = Float[Array, "S"]
@@ -41,11 +41,13 @@ Logits = Float[Array, "S"]
 class GenerativeModel:
     config: TransformerConfig
     decode: bool
+    module: Transformer
 
     tokenizer: Optional[PreTrainedTokenizerBase] = None
     params: Optional[Params] = None
     hooks: HookMap
     mutable: List[str]
+    hook_collections: List[str]
     cache: Optional[Params] = None
 
     def __init__(
@@ -58,6 +60,7 @@ class GenerativeModel:
     ):
         self.config = config
         self.decode = config.decode
+        self.module = Transformer.from_config(config)
 
         if tokenizer is not None:
             self.tokenizer = configure_tokenizer(tokenizer)
@@ -72,6 +75,7 @@ class GenerativeModel:
 
         if hooks is not None:
             self.hooks = hooks
+            self.hook_collections = hook_collections
             self.mutable = list(set(self.mutable).union(set(hook_collections)))
         else:
             self.hooks = HookMap()
@@ -116,31 +120,22 @@ class GenerativeModel:
     ) -> List[str]:
         if isinstance(input, String):
             tokens = self.to_tokens(input, prepend_bos, truncate, max_length)
+        elif isinstance(input, int):
+            tokens = [input]
         else:
             tokens = input
 
         return list(map(self.to_str, tokens))
 
-    def init_model(self) -> Transformer:
-        model = Transformer.from_config(self.config)
-        return model
-
-    def init_cache(self, model: Transformer) -> Params:
-        input_ids = jnp.ones((self.config.context_length,), jnp.int32)
-        variables = model.init(jr.PRNGKey(0), input_ids)
-        self.cache = variables["cache"]
-        return self.cache
-
     def __call__(self, tokens: Tokens) -> Tuple[Logits, Params]:
         if self.params is None:
             raise ValueError("Params not initialised")
 
-        # Initialise the model
-        model = self.init_model()
-
         # Initialise the cache if using
         if self.decode and self.cache is None:
-            self.init_cache(model)
+            input_ids = jnp.ones((self.config.context_length,), jnp.int32)
+            variables = self.module.init(jr.PRNGKey(0), input_ids)
+            self.cache = variables["cache"]
 
         # Prepare the model variables (params and optional cache)
         variables = {"params": self.params}
@@ -148,10 +143,13 @@ class GenerativeModel:
             variables["cache"] = self.cache
 
         # Apply the model to the input token(s)
-        logits, state = model.apply(variables, tokens, self.hooks, mutable=self.mutable)
+        logits, state = self.module.apply(
+            variables, tokens, self.hooks, mutable=self.mutable
+        )
 
         # Store the updated cache state
         if self.decode:
             self.cache = state["cache"]
 
-        return logits, state
+        output = {k: v for k, v in state.items() if k in self.hook_collections}
+        return logits, output

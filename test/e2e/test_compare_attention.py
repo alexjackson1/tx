@@ -86,7 +86,11 @@ def tfs_params(gpt2: PretrainedGPT2Model, tx_params: Params) -> Params:
     return tfs_attention_params(gpt2.tx_config, tx_params)
 
 
-@pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=str)
+def format_ids(val):
+    return f"batch_dims={val}"
+
+
+@pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=format_ids)
 def test_compare_tfs_implementation(
     rng: jr.KeyArray,
     tfs_module: nn.Module,
@@ -111,7 +115,7 @@ def test_compare_tfs_implementation(
     assert jnp.allclose(tfs_output, tx_output, atol=PRECISION, rtol=PRECISION)
 
 
-@pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=str)
+@pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_ids)
 def test_compare_flax_implementation(
     rng: jr.KeyArray,
     flax_module: nn.Module,
@@ -140,7 +144,7 @@ def test_compare_flax_implementation(
 
 
 @pytest.mark.skip("Does not test tx implementation, sanity check")
-@pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=str)
+@pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=format_ids)
 def test_compare_flax_with_tfs(
     rng: jr.KeyArray,
     flax_module: nn.Module,

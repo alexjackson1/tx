@@ -1,6 +1,6 @@
 from functools import partial
 from jaxtyping import Array, Float, Bool
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 import jax
 import jax.lax as lax
@@ -11,7 +11,7 @@ from ..hooks import HookPoint, HookMap, apply_hooks
 
 
 def apply_mask(
-    mask: Bool[Array, "S S"], scores: Float[Array, "... NH QL KL"]
+    mask: Bool[Array, "... 1 QL KL"], scores: Float[Array, "... NH QL KL"]
 ) -> Float[Array, "... NH QL KL"]:
     """Applies a causal mask to the attention scores (pre-normalisation).
 
@@ -23,8 +23,7 @@ def apply_mask(
     Returns:
         The masked attention scores.
     """
-    big_neg = jnp.finfo(scores.dtype).min
-    return jnp.where(mask, scores, big_neg)
+    return jnp.where(mask, scores, jnp.finfo(scores.dtype).min)
 
 
 class KeyValueCache(NamedTuple):
@@ -90,6 +89,8 @@ class MultiHeadAttention(nn.Module):
     linear transformations."""
     use_bias: bool = True
     """Whether to include a bias term in the linear transformations."""
+    decode: bool = False
+    """Whether to run in autoregressive mode."""
     dtype: Optional[jnp.dtype] = None
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
@@ -110,9 +111,18 @@ class MultiHeadAttention(nn.Module):
 
         dtype = self.dtype or jnp.result_type(states)
         states = jnp.asarray(states, dtype)
+        batch_dims = states.shape[:-2]
+
+        is_initialized = self.has_variable("cache", "cache_index")
+        if self.decode:
+            cache = self.init_cache(states.shape[:-2])
 
         # Create a causal mask for the attention weights.
-        mask = nn.make_causal_mask(jnp.ones(states.shape[:-1], dtype="bool"))
+        mask = nn.make_causal_mask(
+            jnp.ones((self.context_length,), dtype="bool"),
+            extra_batch_dims=len(batch_dims),
+            dtype="bool",
+        )
 
         # Linear transformation initialiser.
         dense = partial(
@@ -125,19 +135,48 @@ class MultiHeadAttention(nn.Module):
         )
 
         # Apply a linear transformation to the input array(s).
+        kv_states = states[None, -1] if self.decode and is_initialized else states
         qkv_states = (
             dense(name="query", features=(self.num_heads, self.head_dim))(states),
-            dense(name="key", features=(self.num_heads, self.head_dim))(states),
-            dense(name="value", features=(self.num_heads, self.head_dim))(states),
+            dense(name="key", features=(self.num_heads, self.head_dim))(kv_states),
+            dense(name="value", features=(self.num_heads, self.head_dim))(kv_states),
         )
         query, key, value = self._apply_qkv_hooks(qkv_states, hooks)
+        query_length, key_length = query.shape[-3], key.shape[-3]
+
+        # Make causal mask
+        if self.decode and is_initialized:
+            mask_shift = cache.index.value
+            max_decoder_length = cache.key.value.shape[-3]
+            batch_zeros = (0,) * len(batch_dims)
+            batch_ones = (1,) * len(batch_dims)
+            indices = (*batch_zeros, 0, mask_shift, 0)
+            indices = jnp.array(indices, dtype=jnp.int32)
+            causal_mask = lax.dynamic_slice(
+                mask, indices, (*batch_ones, 1, 1, max_decoder_length)
+            )
+        else:
+            causal_mask = mask[..., :query_length, :key_length]
+
+        if self.decode and is_initialized:
+            # Retrieve the previous key and value arrays from the cache.
+            cache_index = cache.index
+            cached_key, cached_value = cache.key, cache.value
+
+            indices = (0,) * len(batch_dims) + (cache_index.value, 0, 0)
+            indices = jnp.array(indices, dtype=jnp.int32)
+            key = lax.dynamic_update_slice(cached_key.value, key, indices)
+            value = lax.dynamic_update_slice(cached_value.value, value, indices)
+
+            cached_key.value, cached_value.value = key, value
+            cache_index.value = cache_index.value + 1
 
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
         scores = jnp.einsum("...qhd,...khd->...hqk", query, key)
 
         # Apply the causal mask to the attention weights.
-        scores = apply_mask(mask, scores)
+        scores = apply_mask(causal_mask, scores)
         scores = self.apply_hooks(HookPoint.ATTN_SCORES, hooks, scores)
 
         # Normalise the attention weights
@@ -153,6 +192,15 @@ class MultiHeadAttention(nn.Module):
         output = dense(name="c_proj", features=self.features)(merged_z)
         output = self.apply_hooks(HookPoint.ATTN_OUTPUT, hooks, output)
         return output
+
+    def init_cache(self, batch_dims: Sequence[int] = ()) -> KeyValueCache:
+        """Initialises the cache."""
+        shape = (*batch_dims, self.context_length, self.num_heads, self.head_dim)
+        key = self.variable("cache", "cached_key", jnp.zeros, shape, self.dtype)
+        value = self.variable("cache", "cached_value", jnp.zeros, shape, self.dtype)
+        zero_init = lambda: jnp.array(0, dtype=jnp.int32)
+        index = self.variable("cache", "cache_index", zero_init)
+        return KeyValueCache(key, value, index)
 
     def apply_hooks(
         self, hook_point: HookPoint, hooks: HookMap, x: Array, **kwargs
