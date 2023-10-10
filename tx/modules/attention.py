@@ -110,12 +110,17 @@ class MultiHeadAttention(nn.Module):
         """
 
         dtype = self.dtype or jnp.result_type(states)
-        states = jnp.asarray(states, dtype)
+        q_inputs = jnp.asarray(states, dtype)
+        kv_inputs = jnp.asarray(states, dtype)
         batch_dims = states.shape[:-2]
 
         is_initialized = self.has_variable("cache", "cache_index")
         if self.decode:
             cache = self.init_cache(states.shape[:-2])
+
+            if is_initialized and cache.index.value != 0:
+                kv_inputs = kv_inputs.take(-1, axis=-2)
+                kv_inputs = jnp.expand_dims(kv_inputs, axis=-2)
 
         # Create a causal mask for the attention weights.
         mask = nn.make_causal_mask(
@@ -135,11 +140,10 @@ class MultiHeadAttention(nn.Module):
         )
 
         # Apply a linear transformation to the input array(s).
-        kv_states = states[None, -1] if self.decode and is_initialized else states
         qkv_states = (
-            dense(name="query", features=(self.num_heads, self.head_dim))(states),
-            dense(name="key", features=(self.num_heads, self.head_dim))(kv_states),
-            dense(name="value", features=(self.num_heads, self.head_dim))(kv_states),
+            dense(name="query", features=(self.num_heads, self.head_dim))(q_inputs),
+            dense(name="key", features=(self.num_heads, self.head_dim))(kv_inputs),
+            dense(name="value", features=(self.num_heads, self.head_dim))(kv_inputs),
         )
         query, key, value = self._apply_qkv_hooks(qkv_states, hooks)
         query_length, key_length = query.shape[-3], key.shape[-3]
@@ -153,7 +157,7 @@ class MultiHeadAttention(nn.Module):
             indices = (*batch_zeros, 0, mask_shift, 0)
             indices = jnp.array(indices, dtype=jnp.int32)
             causal_mask = lax.dynamic_slice(
-                mask, indices, (*batch_ones, 1, 1, max_decoder_length)
+                mask, indices, (*batch_ones, 1, kv_inputs.shape[-2], max_decoder_length)
             )
         else:
             causal_mask = mask[..., :query_length, :key_length]
@@ -169,7 +173,7 @@ class MultiHeadAttention(nn.Module):
             value = lax.dynamic_update_slice(cached_value.value, value, indices)
 
             cached_key.value, cached_value.value = key, value
-            cache_index.value = cache_index.value + 1
+            cache_index.value = cache_index.value + kv_inputs.shape[-2]
 
         # Compute the attention weights.
         query = query / jnp.sqrt(query.shape[-1])
