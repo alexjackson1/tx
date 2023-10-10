@@ -1,0 +1,3 @@
+[submodule "circuitsvis"]
+	path = circuitsvis
+	url = git@github.com:alexjackson1/circuitsvis
