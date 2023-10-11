@@ -1,6 +1,8 @@
 {
   "python.testing.pytestArgs": [
-    "test"
+    "test",
+    "circuitsvis/python/circuitsvis/tests",
+    "circuitsvis/python/circuitsvis/utils/tests"
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true

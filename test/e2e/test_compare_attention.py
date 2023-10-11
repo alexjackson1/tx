@@ -31,7 +31,7 @@ PRECISION = 1e-6
 
 
 @pytest.fixture
-def rng() -> jr.KeyArray:
+def rng() -> Array:
     return jr.PRNGKey(0)
 
 
@@ -92,7 +92,7 @@ def format_ids(val):
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=format_ids)
 def test_compare_tfs_implementation(
-    rng: jr.KeyArray,
+    rng: Array,
     tfs_module: nn.Module,
     tx_module: TxAttention,
     tfs_params: Params,
@@ -117,7 +117,7 @@ def test_compare_tfs_implementation(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_ids)
 def test_compare_flax_implementation(
-    rng: jr.KeyArray,
+    rng: Array,
     flax_module: nn.Module,
     tx_module: TxAttention,
     flax_params: Params,
@@ -146,7 +146,7 @@ def test_compare_flax_implementation(
 @pytest.mark.skip("Does not test tx implementation, sanity check")
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,)], ids=format_ids)
 def test_compare_flax_with_tfs(
-    rng: jr.KeyArray,
+    rng: Array,
     flax_module: nn.Module,
     tfs_module: TFSAttention,
     flax_params: Params,

@@ -3,7 +3,7 @@ from jaxtyping import Array
 from typing import Dict, Optional
 
 import jax.numpy as jnp
-from transformers import FlaxGPT2LMHeadModel
+from transformers import FlaxGPT2LMHeadModel, GPT2TokenizerFast
 
 from tx.modules.transformer import TransformerConfig
 
@@ -21,6 +21,12 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
         init_range=0.02,
     )
 
+    tokenizer_class = GPT2TokenizerFast
+
+    @classmethod
+    def load_tokenizer(cls) -> GPT2TokenizerFast:
+        return cls.tokenizer_class.from_pretrained("gpt2")
+
     @classmethod
     def make_config(
         cls,
@@ -31,6 +37,27 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
         return cls.tx_config.replace(
             decode=decode, dtype=dtype, param_dtype=param_dtype
         )
+
+    @classmethod
+    def load_params(cls) -> Dict[str, Array]:
+        model = cls.from_pretrained("gpt2")
+        params = model._params["transformer"]
+        blocks = params["h"]
+        embedding: Array = params["wte"]["embedding"]
+
+        return {
+            "embed": params["wte"],
+            "pos_embed": params["wpe"],
+            **{
+                f"block_{i}": PretrainedGPT2Model.block_params(blocks[f"{i}"])
+                for i in range(len(blocks))
+            },
+            "ln_f": params["ln_f"],
+            "unembed": {
+                "kernel": jnp.transpose(embedding),
+                "bias": jnp.zeros((embedding.shape[0],)),
+            },
+        }
 
     @classmethod
     def attn_params(cls, attn):

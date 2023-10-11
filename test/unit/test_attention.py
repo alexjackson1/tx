@@ -51,7 +51,7 @@ def count_populated_entries(
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=f("batch_dims"))
 @pytest.mark.parametrize("seq_len", [1, 5, 1024], ids=f("seq_len"))
 def test_initialises_cache_correctly(
-    rng: jr.KeyArray,
+    rng: Array,
     decode_module: tx.MultiHeadAttention,
     batch_dims: Sequence[int],
     seq_len: int,
@@ -80,7 +80,7 @@ def test_initialises_cache_correctly(
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=f("batch_dims"))
 @pytest.mark.parametrize("seq_len", [1, 5], ids=f("seq_len"))
 def test_populates_cache_correctly(
-    rng: jr.KeyArray,
+    rng: Array,
     decode_module: tx.MultiHeadAttention,
     batch_dims: Sequence[int],
     seq_len: int,

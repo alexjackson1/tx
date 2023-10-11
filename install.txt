@@ -1,0 +1,4 @@
+1. Upgrade pip
+2. Install JAX (GPU or CPU)
+3. Install requirements.txt
+4. Install circuitsvis (either the version without pytorch or normal version)

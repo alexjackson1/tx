@@ -32,7 +32,7 @@ def format_params(batch_dims: Sequence[int]) -> str:
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_embed_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -50,7 +50,7 @@ def test_embed_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_pos_embed_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -70,7 +70,7 @@ def test_pos_embed_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_attention_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -95,7 +95,7 @@ def test_attention_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_mlp_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -114,7 +114,7 @@ def test_mlp_contract(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_layer_norm_contract(rng: jr.KeyArray, batch_dims: Sequence[int]):
+def test_layer_norm_contract(rng: Array, batch_dims: Sequence[int]):
     ARBITRARY_DIMS = (4, 7)
 
     layer = tx.LayerNorm(epsilon=1e-5)
@@ -128,7 +128,7 @@ def test_layer_norm_contract(rng: jr.KeyArray, batch_dims: Sequence[int]):
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_transformer_block_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -155,7 +155,7 @@ def test_transformer_block_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_unembed_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
@@ -175,7 +175,7 @@ def test_unembed_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_transformer_contract(
-    rng: jr.KeyArray, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7

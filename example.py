@@ -14,7 +14,7 @@ if __name__ == "__main__":
     config = PretrainedGPT2Model.tx_config
 
     def make_hook(name):
-        def hook(x):
+        def hook(x, **kwargs):
             print(f"{name}: {x.shape}")
             return x
 

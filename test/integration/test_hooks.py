@@ -115,7 +115,7 @@ def test_transformer_hooks_called(
     ids=lambda hp: hp.value,
 )
 def test_mlp_hooks_called(
-    rng: jr.KeyArray,
+    rng: Array,
     mocker: MockerFixture,
     mlp: MLP,
     mlp_params: Params,
@@ -144,7 +144,7 @@ def test_mlp_hooks_called(
     ids=lambda hp: hp.value,
 )
 def test_attention_hooks_called(
-    rng: jr.KeyArray,
+    rng: Array,
     mocker: MockerFixture,
     multi_head_attention: MultiHeadAttention,
     multi_head_attention_params: Params,
@@ -163,7 +163,7 @@ def test_attention_hooks_called(
     "hook_point", [HookPoint.LN_STD, HookPoint.LN_NORMALIZED], ids=lambda hp: hp.value
 )
 def test_layer_norm_hooks_called(
-    rng: jr.KeyArray,
+    rng: Array,
     mocker: MockerFixture,
     layer_norm: LayerNorm,
     layer_norm_params: Params,
@@ -224,7 +224,7 @@ def test_transformer_hooks_can_store_values(
     ids=format_ids,
 )
 def test_mlp_hooks_can_store_values(
-    rng: jr.KeyArray,
+    rng: Array,
     mlp: MLP,
     mlp_params: Params,
     hook_point: HookPoint,
@@ -253,7 +253,7 @@ def test_mlp_hooks_can_store_values(
     ids=format_ids,
 )
 def test_attention_hooks_can_store_values(
-    rng: jr.KeyArray,
+    rng: Array,
     multi_head_attention: MultiHeadAttention,
     multi_head_attention_params: Params,
     hook_point: HookPoint,
@@ -279,7 +279,7 @@ def test_attention_hooks_can_store_values(
     ids=format_ids,
 )
 def test_layer_norm_hooks_can_store_values(
-    rng: jr.KeyArray,
+    rng: Array,
     layer_norm: LayerNorm,
     layer_norm_params: Params,
     hook_point: HookPoint,

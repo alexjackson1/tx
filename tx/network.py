@@ -1,5 +1,6 @@
-from jaxtyping import Array, Float
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+import jax
+from jaxtyping import Array, Float, Int
+from typing import Dict, Iterable, List, Literal, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -7,7 +8,9 @@ from optax import Params
 
 from transformers import PreTrainedTokenizerBase
 
-from .modules import Transformer, TransformerConfig, HookMap
+from .modules import Transformer, TransformerConfig
+from .models import index
+from .hooks import CacheAll, compose, Hook, HookMap, HookPoint, apply_hooks
 
 
 DArray = Union[Dict[str, Array], Dict[str, "DArray"]]
@@ -36,6 +39,12 @@ Tokens = Union[int, Iterable[int]]
 String = str
 TokensOrString = Union[Tokens, String]
 Logits = Float[Array, "S"]
+
+ReturnType = Literal["logits", "preds", "loss"]
+
+
+def list_union(a: List[str], b: List[str]) -> List[str]:
+    return list(set(a).union(set(b)))
 
 
 class GenerativeModel:
@@ -73,12 +82,35 @@ class GenerativeModel:
         else:
             self.mutable = []
 
+        self.hook_collections = hook_collections
+        self.mutable = list_union(self.mutable, hook_collections)
         if hooks is not None:
             self.hooks = hooks
-            self.hook_collections = hook_collections
-            self.mutable = list(set(self.mutable).union(set(hook_collections)))
         else:
-            self.hooks = HookMap()
+            self.hooks = {}
+
+    def reset(self):
+        self.cache = None
+        self.hooks = {}
+        self.hook_collections = []
+        self.mutable = ["cache"] if self.decode else []
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_id: index.ModelStr,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        hooks: Optional[HookMap] = None,
+        hook_collections: List[str] = [],
+    ) -> "GenerativeModel":
+        model_details = index.load_pretrained_model(model_id)
+        return cls(
+            model_details.config,
+            tokenizer=model_details.tokenizer if tokenizer is None else tokenizer,
+            params=model_details.params,
+            hooks=hooks,
+            hook_collections=hook_collections,
+        )
 
     def to_tokens(
         self,
@@ -127,7 +159,7 @@ class GenerativeModel:
 
         return list(map(self.to_str, tokens))
 
-    def __call__(self, tokens: Tokens) -> Tuple[Logits, Params]:
+    def run(self, tokens: Tokens) -> Tuple[Logits, Params]:
         if self.params is None:
             raise ValueError("Params not initialised")
 
@@ -153,3 +185,35 @@ class GenerativeModel:
 
         output = {k: v for k, v in state.items() if k in self.hook_collections}
         return logits, output
+
+    def run_with_intermediates(self, tokens: Tokens) -> Tuple[Logits, Params, Params]:
+        # self.hooks = compose(self.hooks, CacheAll)
+        self.hooks = CacheAll
+        self.hook_collections = list_union(self.hook_collections, ["intermediates"])
+        self.mutable = list_union(self.mutable, ["intermediates"])
+        logits, output = self.run(tokens)
+        return (logits, output)
+
+    def __call__(
+        self, input: TokensOrString, return_type: Optional[ReturnType] = None
+    ) -> Tuple[Logits, Params]:
+        if isinstance(input, String):
+            tokens = self.to_tokens(input)
+        elif isinstance(input, int):
+            tokens = jnp.array([input], jnp.int32)
+        else:
+            tokens = input
+
+        logits, state = self.run(tokens)
+        if return_type is None or return_type == "logits":
+            return logits, state
+
+        preds = jnp.argmax(jax.nn.softmax(logits, axis=-1), axis=-1)
+        if return_type == "preds":
+            return preds, state
+
+        if return_type == "loss":
+            labels = jnp.expand_dims(tokens[..., 1:], axis=-1)
+            log_probs = jax.nn.log_softmax(logits[..., :-1, :], axis=-1)
+            log_probs = jnp.take_along_axis(log_probs, labels, axis=-1)
+            return -log_probs.mean(), state
