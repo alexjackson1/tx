@@ -8,7 +8,7 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from jaxtyping import Array
+from jaxtyping import Array, PyTree
 from typing import Sequence
 
 import pytest
@@ -16,10 +16,11 @@ from pytest_mock import MockerFixture
 
 import jax.random as jr
 import jax.numpy as jnp
-from optax import Params
 
 from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
 from tx.hooks import Hook, HookPoint, StoreHook
+
+Params = PyTree[Array]
 
 
 @pytest.fixture

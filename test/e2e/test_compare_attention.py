@@ -7,14 +7,13 @@ from jax.config import config
 
 config.update("jax_enable_x64", True)
 
-from jaxtyping import Array
+from jaxtyping import Array, PyTree
 
 import pytest
 
 import jax.numpy as jnp
 import jax.random as jr
 import flax.linen as nn
-from optax import Params
 
 from examples.params import tfs_attention_params
 
@@ -26,6 +25,8 @@ import param_conversion as convert_params
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
 from tx import TransformerConfig, MultiHeadAttention as TxAttention
+
+Params = PyTree[Array]
 
 PRECISION = 1e-6
 

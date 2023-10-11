@@ -1,19 +1,17 @@
 import jax
-from jaxtyping import Array, Float, Int
-from typing import Dict, Iterable, List, Literal, Optional, Tuple, Union
+from jaxtyping import Array, Float, PyTree
+from typing import Iterable, List, Literal, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import jax.random as jr
-from optax import Params
 
 from transformers import PreTrainedTokenizerBase
 
 from .modules import Transformer, TransformerConfig
 from .models import index
-from .hooks import CacheAll, compose, Hook, HookMap, HookPoint, apply_hooks
+from .hooks import CacheAll, HookMap
 
-
-DArray = Union[Dict[str, Array], Dict[str, "DArray"]]
+Params = PyTree[Array]
 
 
 def prepends_bos_token(tokenizer: PreTrainedTokenizerBase) -> bool:

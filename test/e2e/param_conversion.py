@@ -1,6 +1,9 @@
+from jaxtyping import Array, PyTree
 import jax.numpy as jnp
-from optax import Params
+
 from tx.modules.transformer import TransformerConfig
+
+Params = PyTree[Array]
 
 
 def to_flax(config: TransformerConfig, tx_params: Params) -> Params:

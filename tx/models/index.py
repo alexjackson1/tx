@@ -1,5 +1,5 @@
+from jaxtyping import Array, PyTree
 from typing import Literal, NamedTuple
-from optax import Params
 
 from transformers import PreTrainedTokenizerBase
 from tx.modules.transformer import TransformerConfig
@@ -9,7 +9,7 @@ class IndexEntry(NamedTuple):
     model_name: str
     config: TransformerConfig
     tokenizer: PreTrainedTokenizerBase
-    params: Params
+    params: PyTree[Array]
 
 
 ModelStr = Literal["gpt2"]

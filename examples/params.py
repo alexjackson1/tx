@@ -1,7 +1,9 @@
+from jaxtyping import Array, PyTree
 import jax.numpy as jnp
-from optax import Params
 
 from tx.modules import TransformerConfig
+
+Params = PyTree[Array]
 
 
 def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:

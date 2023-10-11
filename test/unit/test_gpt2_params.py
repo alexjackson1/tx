@@ -4,16 +4,16 @@ import os, sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from jaxtyping import Array
+from jaxtyping import Array, PyTree
 
 import pytest
 
 import jax.numpy as jnp
-import flax.linen as nn
-from optax import Params
 
 import tx
 from tx.models import PretrainedGPT2Model
+
+Params = PyTree[Array]
 
 
 @pytest.fixture
