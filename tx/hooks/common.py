@@ -1,16 +1,12 @@
 from enum import Enum
-from jaxtyping import Array
-from typing import Any, Callable, Dict, NamedTuple, Optional
+from jaxtyping import Array, PyTree
+from typing import Any, Callable, Dict
+
+import flax.linen as nn
 
 
-HookFn = Callable[[Array, Any], Array]
+HookFn = Callable[[Array, Dict[str, Any]], Array]
 """A function that applies a hook to an array."""
-
-
-class Hook(NamedTuple):
-    """A hook that can be applied to an activation."""
-
-    apply: HookFn
 
 
 class HookPoint(Enum):
@@ -55,13 +51,23 @@ class HookPoint(Enum):
     """The output of the MLP after the activation function."""
 
 
-HookMap = Dict[str, Hook]
-
-
 def apply_hooks(
-    hook_point: HookPoint, hooks: Optional[HookMap], x: Array, **kwargs
+    hook_point: HookPoint, hooks: PyTree[HookFn], x: Array, **kwargs
 ) -> Array:
     """Applies a hook to the given array."""
     if hooks is not None and hook_point.value in hooks:
-        x = hooks[hook_point.value].apply(x, hook_point=hook_point, **kwargs)
+        x = hooks[hook_point.value](x, hook_point=hook_point, **kwargs)
     return x
+
+
+def compose_hooks(*hooks: HookFn) -> HookFn:
+    """Composes multiple hooks into a single hook."""
+
+    def new_hook(
+        x: Array, hook_point: HookPoint = None, module: nn.Module = None, **kwargs
+    ) -> Array:
+        for hook in hooks:
+            x = hook(x, hook_point=hook_point, module=module, **kwargs)
+        return x
+
+    return new_hook

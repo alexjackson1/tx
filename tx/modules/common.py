@@ -1,11 +1,11 @@
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, PyTree
 from typing import Optional
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from ..hooks import HookMap, HookPoint, apply_hooks
+from ..hooks import HookPoint, apply_hooks, HookFn
 
 
 class LayerNorm(nn.Module):
@@ -38,7 +38,7 @@ class LayerNorm(nn.Module):
     """The dtype of the parameters."""
 
     @nn.compact
-    def __call__(self, x: Array, hooks: Optional[HookMap] = None) -> Array:
+    def __call__(self, x: Array, hooks: Optional[PyTree[HookFn]] = None) -> Array:
         """Normalizes the input array using the mean and variance."""
         # Convert to JAX array
         dtype = self.dtype or jnp.result_type(x)

@@ -1,6 +1,6 @@
 from jaxtyping import Array
 import flax.linen as nn
-from .common import Hook, HookMap, HookPoint
+from .common import HookPoint
 
 
 def store_hook(
@@ -13,10 +13,10 @@ def store_hook(
     return x
 
 
-StoreHook = Hook(store_hook)
+StoreHook = store_hook
 """A hook that stores the given array as an intermediate value."""
 
-CacheAll: HookMap = {
+CacheAll = {
     HookPoint.EMBED.value: StoreHook,
     HookPoint.POS_EMBED.value: StoreHook,
     HookPoint.RESIDUAL.value: StoreHook,

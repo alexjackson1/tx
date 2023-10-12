@@ -8,7 +8,7 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from jaxtyping import Array, PyTree
+from jaxtyping import Array
 from typing import Sequence
 
 import pytest
@@ -18,9 +18,8 @@ import jax.random as jr
 import jax.numpy as jnp
 
 from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
-from tx.hooks import Hook, HookPoint, StoreHook
-
-Params = PyTree[Array]
+from tx.hooks import HookPoint, StoreHook
+from tx.tree_utils import Params
 
 
 @pytest.fixture
@@ -101,7 +100,7 @@ def test_transformer_hooks_called(
     stub = mocker.stub()
     variables = {"params": transformer_params}
     inputs = jnp.ones((256,), jnp.int32)
-    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    hooks = {hook_point.value: make_hook_fn(stub)}
     transformer.apply(variables, inputs, hooks)
 
     if hook_point != HookPoint.RESIDUAL:
@@ -125,7 +124,7 @@ def test_mlp_hooks_called(
     stub = mocker.stub()
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
-    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    hooks = {hook_point.value: make_hook_fn(stub)}
     mlp.apply(variables, inputs, hooks)
 
     stub.assert_called_once()
@@ -154,7 +153,7 @@ def test_attention_hooks_called(
     stub = mocker.stub()
     variables = {"params": multi_head_attention_params}
     inputs = jr.uniform(rng, (1024, 768))
-    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    hooks = {hook_point.value: make_hook_fn(stub)}
     multi_head_attention.apply(variables, inputs, hooks)
 
     stub.assert_called_once()
@@ -173,7 +172,7 @@ def test_layer_norm_hooks_called(
     stub = mocker.stub()
     variables = {"params": layer_norm_params}
     inputs = jr.uniform(rng, (256,))
-    hooks = {hook_point.value: Hook(make_hook_fn(stub))}
+    hooks = {hook_point.value: make_hook_fn(stub)}
     layer_norm.apply(variables, inputs, hooks)
 
     stub.assert_called_once()

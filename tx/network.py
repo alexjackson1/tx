@@ -9,9 +9,8 @@ from transformers import PreTrainedTokenizerBase
 
 from .modules import Transformer, TransformerConfig
 from .models import index
-from .hooks import CacheAll, HookMap
-
-Params = PyTree[Array]
+from .hooks import CacheAll, HookFn
+from .tree_utils import Params
 
 
 def prepends_bos_token(tokenizer: PreTrainedTokenizerBase) -> bool:
@@ -52,7 +51,7 @@ class GenerativeModel:
 
     tokenizer: Optional[PreTrainedTokenizerBase] = None
     params: Optional[Params] = None
-    hooks: HookMap
+    hooks: PyTree[HookFn] = {}
     mutable: List[str]
     hook_collections: List[str]
     cache: Optional[Params] = None
@@ -62,7 +61,7 @@ class GenerativeModel:
         config: TransformerConfig,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         params: Optional[Params] = None,
-        hooks: Optional[HookMap] = None,
+        hooks: Optional[PyTree[HookFn]] = None,
         hook_collections: List[str] = [],
     ):
         self.config = config
@@ -98,7 +97,7 @@ class GenerativeModel:
         cls,
         model_id: index.ModelStr,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
-        hooks: Optional[HookMap] = None,
+        hooks: Optional[PyTree[HookFn]] = None,
         hook_collections: List[str] = [],
     ) -> "GenerativeModel":
         model_details = index.load_pretrained_model(model_id)

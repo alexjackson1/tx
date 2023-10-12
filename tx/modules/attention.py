@@ -1,4 +1,4 @@
-from jaxtyping import Array, Float, Bool
+from jaxtyping import Array, Float, Bool, PyTree
 from typing import NamedTuple, Optional, Sequence, Tuple
 
 import jax
@@ -6,7 +6,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from ..hooks import HookPoint, HookMap, apply_hooks
+from ..hooks import HookPoint, apply_hooks, HookFn
 
 
 def apply_mask(
@@ -121,7 +121,7 @@ class MultiHeadAttention(nn.Module):
 
     @nn.compact
     def __call__(
-        self, states: Float[Array, "... S F"], hooks: Optional[HookMap] = None
+        self, states: Float[Array, "... S F"], hooks: Optional[PyTree[HookFn]] = None
     ) -> Float[Array, "... S F"]:
         """Applies the multi-headed attention module to the input array.
 
@@ -242,12 +242,12 @@ class MultiHeadAttention(nn.Module):
         return key, value, causal_mask
 
     def apply_hooks(
-        self, hook_point: HookPoint, hooks: HookMap, x: Array, **kwargs
+        self, hook_point: HookPoint, hooks: PyTree[HookFn], x: Array, **kwargs
     ) -> Array:
         return apply_hooks(hook_point, hooks, x, module=self, **kwargs)
 
     def _apply_qkv_hooks(
-        self, qkv: Tuple[Array, Array, Array], hooks: Optional[HookMap]
+        self, qkv: Tuple[Array, Array, Array], hooks: Optional[PyTree[HookFn]]
     ) -> Tuple[Array, Array, Array]:
         """Stores the query, key, and value arrays in the module's state dictionary."""
         ret_vals = []

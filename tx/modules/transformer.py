@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, PyTree
 from typing import Iterable, Optional
 
 import jax
@@ -9,7 +9,7 @@ import flax.linen as nn
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
-from ..hooks import HookMap, HookPoint, apply_hooks
+from ..hooks import HookPoint, apply_hooks, HookFn
 
 
 @dataclass
@@ -96,7 +96,7 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(
-        self, x: Float[Array, "S F1"], hooks: Optional[HookMap] = None
+        self, x: Float[Array, "S F1"], hooks: Optional[PyTree[HookFn]] = None
     ) -> Float[Array, "S FN"]:
         """Applies the MLP module to the input array."""
         dtype = self.dtype or jnp.result_type(x)
@@ -172,7 +172,7 @@ class TransformerBlock(nn.Module):
 
     @nn.compact
     def __call__(
-        self, x: Float[Array, "S F"], hooks: Optional[HookMap] = None
+        self, x: Float[Array, "S F"], hooks: Optional[PyTree[HookFn]] = None
     ) -> Float[Array, "S F"]:
         """Applies the transformer block module to the input array."""
         # Cast the input array to the correct dtype
@@ -286,7 +286,7 @@ class Transformer(nn.Module):
 
     @nn.compact
     def __call__(
-        self, tokens: Int[Array, "... S"], hooks: Optional[HookMap] = None
+        self, tokens: Int[Array, "... S"], hooks: Optional[PyTree[HookFn]] = None
     ) -> Float[Array, "... S V"]:
         """Applies the transformer module to the input array."""
         dtype = jnp.promote_types(self.dtype, jnp.float32)

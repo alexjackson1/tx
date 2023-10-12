@@ -1,3 +1,2 @@
-from .common import Hook, HookFn, HookMap, HookPoint, apply_hooks
-from .compose import compose
+from .common import HookFn, HookPoint, apply_hooks, compose_hooks
 from .intermediates import CacheAll, StoreHook

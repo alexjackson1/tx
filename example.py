@@ -1,6 +1,6 @@
 from jax.config import config
 
-from tx.hooks import Hook, HookPoint
+from tx.hooks import HookPoint
 
 config.update("jax_enable_x64", True)
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
             print(f"{name}: {x.shape}")
             return x
 
-        return Hook(hook)
+        return hook
 
     hooks = {
         HookPoint.ATTN_QUERY.value: make_hook("Query"),

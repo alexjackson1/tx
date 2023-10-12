@@ -4,7 +4,7 @@ import os, sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from jaxtyping import Array, PyTree
+from jaxtyping import Array
 
 import pytest
 
@@ -12,8 +12,7 @@ import jax.numpy as jnp
 
 import tx
 from tx.models import PretrainedGPT2Model
-
-Params = PyTree[Array]
+from tx.tree_utils import Params
 
 
 @pytest.fixture
