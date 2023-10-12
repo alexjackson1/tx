@@ -9,7 +9,7 @@ import flax.linen as nn
 
 from .common import LayerNorm, Embed, PosEmbed, Unembed
 from .attention import MultiHeadAttention
-from ..hooks import HookPoint, apply_hooks, HookFn
+from ..hooks import apply_hooks, HookFn
 
 
 @dataclass
@@ -113,10 +113,10 @@ class MLP(nn.Module):
 
         for i, features in enumerate(self.features[:-1]):
             x = init_dense(name=f"fc_{i+1}", features=features)(x)
-            x = apply_hooks(HookPoint.MLP_PRE_ACTIVATION, hooks, x, module=self)
+            x = apply_hooks((*self.path, "pre_activation_hook"), hooks, x, module=self)
 
             x = nn.gelu(x)
-            x = apply_hooks(HookPoint.MLP_POST_ACTIVATION, hooks, x, module=self)
+            x = apply_hooks((*self.path, "post_activation_hook"), hooks, x, module=self)
 
         x = init_dense(name="proj", features=self.features[1])(x)
         return x
@@ -299,7 +299,7 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        embed = apply_hooks(HookPoint.EMBED, hooks, embed, module=self)
+        embed = apply_hooks((*self.path, "embed_hook"), hooks, embed, module=self)
 
         # Embed the positional information
         # offset = self.compute_offset(tokens, cache)
@@ -310,7 +310,9 @@ class Transformer(nn.Module):
             init_range=self.init_range,
             param_dtype=self.param_dtype,
         )(tokens)
-        pos_embed = apply_hooks(HookPoint.POS_EMBED, hooks, pos_embed, module=self)
+        pos_embed = apply_hooks(
+            (*self.path, "pos_embed_hook"), hooks, pos_embed, module=self
+        )
 
         # Combine the embeddings
         x = embed + pos_embed
@@ -329,7 +331,7 @@ class Transformer(nn.Module):
                 dtype=dtype,
                 param_dtype=self.param_dtype,
             )(x, hooks)
-            x = apply_hooks(HookPoint.RESIDUAL, hooks, x, module=self)
+            x = apply_hooks((*self.path, "residual_hook"), hooks, x, module=self)
 
         # Final layer normalisation
         x = LayerNorm(
@@ -338,7 +340,7 @@ class Transformer(nn.Module):
             dtype=dtype,
             param_dtype=self.param_dtype,
         )(x, hooks)
-        x = apply_hooks(HookPoint.FINAL_OUTPUT, hooks, x, module=self)
+        x = apply_hooks((*self.path, "output_hook"), hooks, x, module=self)
 
         logits = Unembed(
             name="unembed",

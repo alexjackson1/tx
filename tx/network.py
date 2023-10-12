@@ -9,8 +9,8 @@ from transformers import PreTrainedTokenizerBase
 
 from .modules import Transformer, TransformerConfig
 from .models import index
-from .hooks import CacheAll, HookFn
-from .tree_utils import Params
+from .hooks import HookFn, store_hook
+from .tree_util import Params
 
 
 def prepends_bos_token(tokenizer: PreTrainedTokenizerBase) -> bool:
@@ -184,8 +184,9 @@ class GenerativeModel:
         return logits, output
 
     def run_with_intermediates(self, tokens: Tokens) -> Tuple[Logits, Params, Params]:
-        # self.hooks = compose(self.hooks, CacheAll)
-        self.hooks = CacheAll
+        # TODO: Not working (need to replace self.params with blank hooks)
+        self.hooks = jax.tree_util.tree_map(lambda _: store_hook, self.params)
+
         self.hook_collections = list_union(self.hook_collections, ["intermediates"])
         self.mutable = list_union(self.mutable, ["intermediates"])
         logits, output = self.run(tokens)

@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 from tx.modules.transformer import TransformerConfig
-from tx.tree_utils import Params
+from tx.tree_util import Params
 
 
 def to_flax(config: TransformerConfig, tx_params: Params) -> Params:

@@ -16,7 +16,7 @@ import jax.random as jr
 import flax.linen as nn
 
 from tx.models import PretrainedGPT2Model
-from tx.tree_utils import Params
+from tx.tree_util import Params
 
 from examples.params import tfs_attention_params
 

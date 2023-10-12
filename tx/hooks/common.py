@@ -1,73 +1,48 @@
-from enum import Enum
 from jaxtyping import Array, PyTree
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import flax.linen as nn
 
+from tx.tree_util import KeyPath, tree_contains_path
 
 HookFn = Callable[[Array, Dict[str, Any]], Array]
 """A function that applies a hook to an array."""
 
 
-class HookPoint(Enum):
-    """The points at which hooks can be applied."""
-
-    # Transformer
-    EMBED = "embed_hook"
-    """The output of the embedding layer."""
-    POS_EMBED = "pos_embed_hook"
-    """The output of the positional embedding layer."""
-    RESIDUAL = "residual_hook"
-    """The residual connection."""
-    FINAL_OUTPUT = "final_output_hook"
-    """The final output of the model (prior to unembedding)."""
-
-    # Layer Norm
-    LN_STD = "std_hook"
-    """The standard deviation of the layer norm input."""
-    LN_NORMALIZED = "normalized_hook"
-    """The normalized layer norm input."""
-
-    # Multi-Head Attention
-    ATTN_QUERY = "query_hook"
-    """The attention query."""
-    ATTN_KEY = "key_hook"
-    """The attention key."""
-    ATTN_VALUE = "value_hook"
-    """The attention value."""
-    ATTN_SCORES = "scores_hook"
-    """The attention scores."""
-    ATTN_WEIGHTS = "weights_hook"
-    """The attention weights."""
-    ATTN_Z = "z_hook"
-    """The attention weights indexed with values"""
-    ATTN_OUTPUT = "output_hook"
-    """The output of the attention block at each layer."""
-
-    # MLP
-    MLP_PRE_ACTIVATION = "pre_activation_hook"
-    """The output of the MLP before the activation function."""
-    MLP_POST_ACTIVATION = "post_activation_hook"
-    """The output of the MLP after the activation function."""
-
-
 def apply_hooks(
-    hook_point: HookPoint, hooks: PyTree[HookFn], x: Array, **kwargs
+    path: KeyPath,
+    hooks: Optional[PyTree[HookFn]],
+    x: Array,
+    **kwargs,
 ) -> Array:
     """Applies a hook to the given array."""
-    if hooks is not None and hook_point.value in hooks:
-        x = hooks[hook_point.value](x, hook_point=hook_point, **kwargs)
+    if hooks is not None and tree_contains_path(hooks, path):
+        sub_tree = hooks
+        for key in path:
+            sub_tree = sub_tree[key]
+
+        assert callable(sub_tree), f"Hook at path {path} is not callable"
+        x = sub_tree(x, path=path, **kwargs)
     return x
 
 
 def compose_hooks(*hooks: HookFn) -> HookFn:
     """Composes multiple hooks into a single hook."""
 
-    def new_hook(
-        x: Array, hook_point: HookPoint = None, module: nn.Module = None, **kwargs
-    ) -> Array:
+    def new_hook(x: Array, **kwargs) -> Array:
         for hook in hooks:
-            x = hook(x, hook_point=hook_point, module=module, **kwargs)
+            x = hook(x, **kwargs)
         return x
 
     return new_hook
+
+
+def store_hook(
+    x: Array, path: KeyPath = None, module: nn.Module = None, **kwargs
+) -> Array:
+    """Stores the given array in the given module."""
+    assert module is not None, "Module must be defined"
+    assert path is not None, "Key path must be defined"
+    hook_name = path[-1]
+    module.sow("intermediates", hook_name, x)
+    return x

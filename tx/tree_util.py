@@ -1,12 +1,15 @@
-from typing import Any, Callable
+from typing import Any, Callable, Hashable, TypeVar
 from jaxtyping import Array, PyTree
 
 import jax
 
 Params = PyTree[Array]
 
+KeyEntry = TypeVar("KeyEntry", bound=Hashable)
+KeyPath = tuple[KeyEntry, ...]
 
-def compose(f: Callable[..., Any], *pytrees: PyTree[Any]) -> PyTree[Any]:
+
+def tree_compose(f: Callable[..., Any], *pytrees: PyTree[Any]) -> PyTree[Any]:
     """Composes a list of pytrees using a function.
 
     Args:
@@ -32,3 +35,11 @@ def compose(f: Callable[..., Any], *pytrees: PyTree[Any]) -> PyTree[Any]:
 
     # Combine the leaves using the specified combination function
     return jax.tree_util.tree_map(f, pytrees[0], *pytrees[1:])
+
+
+def tree_contains_path(pytree: PyTree, keypath: KeyPath) -> bool:
+    for key in keypath:
+        if key not in pytree:
+            return False
+        pytree = pytree[key]
+    return True

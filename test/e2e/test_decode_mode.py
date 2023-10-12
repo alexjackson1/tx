@@ -17,7 +17,6 @@ from transformers import GPT2TokenizerFast
 
 from tx import TransformerConfig
 from tx.models.gpt2 import PretrainedGPT2Model
-from tx.hooks import HookPoint, StoreHook
 from tx.network import GenerativeModel
 
 
@@ -37,8 +36,6 @@ def model(gpt2: PretrainedGPT2Model, config: TransformerConfig):
         config=config,
         tokenizer=GPT2TokenizerFast.from_pretrained("gpt2"),
         params=gpt2.to_params(),
-        hooks={HookPoint.ATTN_OUTPUT.value: StoreHook},
-        hook_collections=["intermediates"],
     )
 
 

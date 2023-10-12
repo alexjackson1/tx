@@ -6,7 +6,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from ..hooks import HookPoint, apply_hooks, HookFn
+from ..hooks import apply_hooks, HookFn
 
 
 def apply_mask(
@@ -178,20 +178,20 @@ class MultiHeadAttention(nn.Module):
 
         # Apply the causal mask to the attention weights.
         scores = apply_mask(causal_mask, scores)
-        scores = self.apply_hooks(HookPoint.ATTN_SCORES, hooks, scores)
+        scores = self.apply_hooks("scores_hook", hooks, scores)
 
         # Normalise the attention weights
         weights: Array = jax.nn.softmax(scores)
-        weights = self.apply_hooks(HookPoint.ATTN_WEIGHTS, hooks, weights)
+        weights = self.apply_hooks("weights_hook", hooks, weights)
 
         # Apply the attention pattern to the value tensor.
         z = jnp.einsum("...hqk,...khd->...qhd", weights, value)
-        z = self.apply_hooks(HookPoint.ATTN_Z, hooks, z)
+        z = self.apply_hooks("z_hook", hooks, z)
 
         # Apply a linear transformation to the attention output.
         merged_z = self._merge_heads(z)
         output = self.proj_dense(name="c_proj")(merged_z)
-        output = self.apply_hooks(HookPoint.ATTN_OUTPUT, hooks, output)
+        output = self.apply_hooks("output_hook", hooks, output)
         return output
 
     def init_cache(self, batch_dims: Sequence[int] = ()) -> KeyValueCache:
@@ -242,18 +242,17 @@ class MultiHeadAttention(nn.Module):
         return key, value, causal_mask
 
     def apply_hooks(
-        self, hook_point: HookPoint, hooks: PyTree[HookFn], x: Array, **kwargs
+        self, name: str, hooks: PyTree[HookFn], x: Array, **kwargs
     ) -> Array:
-        return apply_hooks(hook_point, hooks, x, module=self, **kwargs)
+        return apply_hooks((*self.path, name), hooks, x, module=self, **kwargs)
 
     def _apply_qkv_hooks(
         self, qkv: Tuple[Array, Array, Array], hooks: Optional[PyTree[HookFn]]
     ) -> Tuple[Array, Array, Array]:
         """Stores the query, key, and value arrays in the module's state dictionary."""
         ret_vals = []
-        hook_points = (HookPoint.ATTN_QUERY, HookPoint.ATTN_KEY, HookPoint.ATTN_VALUE)
-        for hook_point, array in zip(hook_points, qkv):
-            ret_vals.append(self.apply_hooks(hook_point, hooks, array))
+        for name, array in zip(("query", "key", "value"), qkv):
+            ret_vals.append(self.apply_hooks(f"{name}_hook", hooks, array))
 
         return ret_vals
 

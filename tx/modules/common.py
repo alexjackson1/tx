@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from ..hooks import HookPoint, apply_hooks, HookFn
+from ..hooks import apply_hooks, HookFn
 
 
 class LayerNorm(nn.Module):
@@ -50,7 +50,7 @@ class LayerNorm(nn.Module):
         x_std = jnp.sqrt(x_var + self.epsilon)
 
         x = (x - x_mean) / x_std
-        x = apply_hooks(HookPoint.LN_STD, hooks, x, module=self)
+        x = apply_hooks((*self.path, "std_hook"), hooks, x, module=self)
 
         # Apply scale and bias
         scale = self.param(
@@ -66,7 +66,7 @@ class LayerNorm(nn.Module):
             self.param_dtype,
         )
         x = x * scale + bias
-        x = apply_hooks(HookPoint.LN_NORMALIZED, hooks, x, module=self)
+        x = apply_hooks((*self.path, "normalized_hook"), hooks, x, module=self)
 
         return x
 
@@ -103,7 +103,6 @@ class Embed(nn.Module):
     @nn.compact
     def __call__(self, tokens: Int[Array, "... S"]) -> Float[Array, "... S F"]:
         """Looks up the embeddings for each token in the input array."""
-        # Lookup embeddings
         embedding = self.param(
             "embedding",
             nn.initializers.normal(self.init_range),
@@ -147,7 +146,6 @@ class PosEmbed(nn.Module):
         self, tokens: Int[Array, "... S"], offset: int = 0
     ) -> Float[Array, "... S F"]:
         """Computes the positional embeddings for each token in the input array."""
-        # Lookup embeddings
         embedding = self.param(
             "embedding",
             nn.initializers.normal(self.init_range),
@@ -192,11 +190,9 @@ class Unembed(nn.Module):
     @nn.compact
     def __call__(self, x: Float[Array, "... S F"]) -> Float[Array, "... S V"]:
         """Computes the logits for each token in the input array."""
-        # Convert to JAX array
         dtype = self.dtype or jnp.result_type(x)
         x = jnp.asarray(x, dtype)
 
-        # Compute logits
         kernel = self.param(
             "kernel",
             nn.initializers.normal(self.init_range),

@@ -18,8 +18,8 @@ import jax.random as jr
 import jax.numpy as jnp
 
 from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
-from tx.hooks import HookPoint, StoreHook
-from tx.tree_utils import Params
+from tx.hooks import store_hook
+from tx.tree_util import Params
 
 
 @pytest.fixture
@@ -87,92 +87,84 @@ def make_hook_fn(stub):
 
 
 @pytest.mark.parametrize(
-    "hook_point",
-    [HookPoint.EMBED, HookPoint.POS_EMBED, HookPoint.RESIDUAL, HookPoint.FINAL_OUTPUT],
-    ids=lambda hp: hp.value,
+    "hook_name", ["embed_hook", "pos_embed_hook", "residual_hook", "output_hook"]
 )
 def test_transformer_hooks_called(
     mocker: MockerFixture,
     transformer: Transformer,
     transformer_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
 ):
     stub = mocker.stub()
     variables = {"params": transformer_params}
     inputs = jnp.ones((256,), jnp.int32)
-    hooks = {hook_point.value: make_hook_fn(stub)}
+    hooks = {hook_name: make_hook_fn(stub)}
+
     transformer.apply(variables, inputs, hooks)
 
-    if hook_point != HookPoint.RESIDUAL:
+    if hook_name != "residual_hook":
         stub.assert_called_once()
     else:
         stub.assert_called()
 
 
-@pytest.mark.parametrize(
-    "hook_point",
-    [HookPoint.MLP_PRE_ACTIVATION, HookPoint.MLP_POST_ACTIVATION],
-    ids=lambda hp: hp.value,
-)
+@pytest.mark.parametrize("hook_name", ["pre_activation_hook", "post_activation_hook"])
 def test_mlp_hooks_called(
     rng: Array,
     mocker: MockerFixture,
     mlp: MLP,
     mlp_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
 ):
     stub = mocker.stub()
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
-    hooks = {hook_point.value: make_hook_fn(stub)}
+    hooks = {hook_name: make_hook_fn(stub)}
     mlp.apply(variables, inputs, hooks)
 
     stub.assert_called_once()
 
 
 @pytest.mark.parametrize(
-    "hook_point",
+    "hook_name",
     [
-        HookPoint.ATTN_QUERY,
-        HookPoint.ATTN_KEY,
-        HookPoint.ATTN_VALUE,
-        HookPoint.ATTN_SCORES,
-        HookPoint.ATTN_WEIGHTS,
-        HookPoint.ATTN_Z,
-        HookPoint.ATTN_OUTPUT,
+        "query_hook",
+        "key_hook",
+        "value_hook",
+        "scores_hook",
+        "weights_hook",
+        "z_hook",
+        "output_hook",
     ],
-    ids=lambda hp: hp.value,
 )
 def test_attention_hooks_called(
     rng: Array,
     mocker: MockerFixture,
     multi_head_attention: MultiHeadAttention,
     multi_head_attention_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
 ):
     stub = mocker.stub()
     variables = {"params": multi_head_attention_params}
     inputs = jr.uniform(rng, (1024, 768))
-    hooks = {hook_point.value: make_hook_fn(stub)}
+    hooks = {hook_name: make_hook_fn(stub)}
     multi_head_attention.apply(variables, inputs, hooks)
 
     stub.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    "hook_point", [HookPoint.LN_STD, HookPoint.LN_NORMALIZED], ids=lambda hp: hp.value
-)
+@pytest.mark.parametrize("hook_name", ["std_hook", "normalized_hook"])
 def test_layer_norm_hooks_called(
     rng: Array,
     mocker: MockerFixture,
     layer_norm: LayerNorm,
     layer_norm_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
 ):
     stub = mocker.stub()
     variables = {"params": layer_norm_params}
     inputs = jr.uniform(rng, (256,))
-    hooks = {hook_point.value: make_hook_fn(stub)}
+    hooks = {hook_name: make_hook_fn(stub)}
     layer_norm.apply(variables, inputs, hooks)
 
     stub.assert_called_once()
@@ -182,8 +174,8 @@ SEQ_LENGTH = 256
 
 
 def format_ids(val):
-    if isinstance(val, HookPoint):
-        return val.value
+    if isinstance(val, str):
+        return val
     elif isinstance(val, tuple):
         return val[0]
     else:
@@ -191,35 +183,35 @@ def format_ids(val):
 
 
 @pytest.mark.parametrize(
-    "hook_point,expected",
+    "hook_name,expected",
     [
-        (HookPoint.EMBED, (SEQ_LENGTH, 768)),
-        (HookPoint.POS_EMBED, (SEQ_LENGTH, 768)),
-        (HookPoint.RESIDUAL, (SEQ_LENGTH, 768)),
-        (HookPoint.FINAL_OUTPUT, (SEQ_LENGTH, 768)),
+        ("embed_hook", (SEQ_LENGTH, 768)),
+        ("pos_embed_hook", (SEQ_LENGTH, 768)),
+        ("residual_hook", (SEQ_LENGTH, 768)),
+        ("output_hook", (SEQ_LENGTH, 768)),
     ],
     ids=format_ids,
 )
 def test_transformer_hooks_can_store_values(
     transformer: Transformer,
     transformer_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
     expected: Sequence[int],
 ):
-    hooks = {hook_point.value: StoreHook}
+    hooks = {hook_name: store_hook}
 
     variables = {"params": transformer_params}
     inputs = jnp.ones((SEQ_LENGTH,), jnp.int32)
     _, state = transformer.apply(variables, inputs, hooks, mutable=["intermediates"])
 
-    assert state["intermediates"][hook_point.value][0].shape == expected
+    assert state["intermediates"][hook_name][0].shape == expected
 
 
 @pytest.mark.parametrize(
-    "hook_point,expected",
+    "hook_name,expected",
     [
-        (HookPoint.MLP_PRE_ACTIVATION, (SEQ_LENGTH, 3072)),
-        (HookPoint.MLP_POST_ACTIVATION, (SEQ_LENGTH, 3072)),
+        ("pre_activation_hook", (SEQ_LENGTH, 3072)),
+        ("post_activation_hook", (SEQ_LENGTH, 3072)),
     ],
     ids=format_ids,
 )
@@ -227,28 +219,28 @@ def test_mlp_hooks_can_store_values(
     rng: Array,
     mlp: MLP,
     mlp_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
     expected: Sequence[int],
 ):
-    hooks = {hook_point.value: StoreHook}
+    hooks = {hook_name: store_hook}
 
     variables = {"params": mlp_params}
     inputs = jr.uniform(rng, (256, 256))
     _, state = mlp.apply(variables, inputs, hooks, mutable=["intermediates"])
 
-    assert state["intermediates"][hook_point.value][0].shape == expected
+    assert state["intermediates"][hook_name][0].shape == expected
 
 
 @pytest.mark.parametrize(
-    "hook_point,expected",
+    "hook_name,expected",
     [
-        (HookPoint.ATTN_QUERY, (SEQ_LENGTH, 12, 64)),
-        (HookPoint.ATTN_KEY, (SEQ_LENGTH, 12, 64)),
-        (HookPoint.ATTN_VALUE, (SEQ_LENGTH, 12, 64)),
-        (HookPoint.ATTN_SCORES, (12, SEQ_LENGTH, SEQ_LENGTH)),
-        (HookPoint.ATTN_WEIGHTS, (12, SEQ_LENGTH, SEQ_LENGTH)),
-        (HookPoint.ATTN_Z, (SEQ_LENGTH, 12, 64)),
-        (HookPoint.ATTN_OUTPUT, (SEQ_LENGTH, 768)),
+        ("query_hook", (SEQ_LENGTH, 12, 64)),
+        ("key_hook", (SEQ_LENGTH, 12, 64)),
+        ("value_hook", (SEQ_LENGTH, 12, 64)),
+        ("scores_hook", (12, SEQ_LENGTH, SEQ_LENGTH)),
+        ("weights_hook", (12, SEQ_LENGTH, SEQ_LENGTH)),
+        ("z_hook", (SEQ_LENGTH, 12, 64)),
+        ("output_hook", (SEQ_LENGTH, 768)),
     ],
     ids=format_ids,
 )
@@ -256,10 +248,10 @@ def test_attention_hooks_can_store_values(
     rng: Array,
     multi_head_attention: MultiHeadAttention,
     multi_head_attention_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
     expected: Sequence[int],
 ):
-    hooks = {hook_point.value: StoreHook}
+    hooks = {hook_name: store_hook}
 
     variables = {"params": multi_head_attention_params}
     inputs = jr.uniform(rng, (SEQ_LENGTH, 768))
@@ -267,14 +259,14 @@ def test_attention_hooks_can_store_values(
         variables, inputs, hooks, mutable=["intermediates"]
     )
 
-    assert state["intermediates"][hook_point.value][0].shape == expected
+    assert state["intermediates"][hook_name][0].shape == expected
 
 
 @pytest.mark.parametrize(
-    "hook_point,expected",
+    "hook_name,expected",
     [
-        (HookPoint.LN_STD, (SEQ_LENGTH, SEQ_LENGTH)),
-        (HookPoint.LN_NORMALIZED, (SEQ_LENGTH, SEQ_LENGTH)),
+        ("std_hook", (SEQ_LENGTH, SEQ_LENGTH)),
+        ("normalized_hook", (SEQ_LENGTH, SEQ_LENGTH)),
     ],
     ids=format_ids,
 )
@@ -282,16 +274,16 @@ def test_layer_norm_hooks_can_store_values(
     rng: Array,
     layer_norm: LayerNorm,
     layer_norm_params: Params,
-    hook_point: HookPoint,
+    hook_name: str,
     expected: Sequence[int],
 ):
-    hooks = {hook_point.value: StoreHook}
+    hooks = {hook_name: store_hook}
 
     variables = {"params": layer_norm_params}
     inputs = jr.uniform(rng, (SEQ_LENGTH, SEQ_LENGTH))
     _, state = layer_norm.apply(variables, inputs, hooks, mutable=["intermediates"])
 
-    assert state["intermediates"][hook_point.value][0].shape == expected
+    assert state["intermediates"][hook_name][0].shape == expected
 
 
 if __name__ == "__main__":

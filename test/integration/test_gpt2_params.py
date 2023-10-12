@@ -12,7 +12,7 @@ import jax.numpy as jnp
 
 import tx
 from tx.models import PretrainedGPT2Model
-from tx.tree_utils import Params
+from tx.tree_util import Params
 
 
 @pytest.fixture

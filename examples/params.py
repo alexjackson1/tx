@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 from tx.modules import TransformerConfig
-from tx.tree_utils import Params
+from tx.tree_util import Params
 
 
 def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:
