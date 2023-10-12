@@ -19,7 +19,7 @@ import jax.numpy as jnp
 
 from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
 from tx.hooks import store_hook
-from tx.tree_util import Params
+from tx.tree_util import KeyPath, Params
 
 
 @pytest.fixture
@@ -284,6 +284,60 @@ def test_layer_norm_hooks_can_store_values(
     _, state = layer_norm.apply(variables, inputs, hooks, mutable=["intermediates"])
 
     assert state["intermediates"][hook_name][0].shape == expected
+
+
+def format_nested_ids(val):
+    if isinstance(val, tuple):
+        if isinstance(val[0], str):
+            return "/".join(val)
+
+        if isinstance(val[0], int):
+            return ",".join([str(v) for v in val])
+
+    return val
+
+
+@pytest.mark.parametrize(
+    "hook_path,expected",
+    [
+        (("block_0", "mlp", "pre_activation_hook"), (SEQ_LENGTH, 3072)),
+        (("block_4", "mlp", "post_activation_hook"), (SEQ_LENGTH, 3072)),
+        (("block_1", "attn", "query_hook"), (SEQ_LENGTH, 12, 64)),
+        (("block_2", "attn", "key_hook"), (SEQ_LENGTH, 12, 64)),
+        (("block_3", "attn", "value_hook"), (SEQ_LENGTH, 12, 64)),
+        (("block_4", "attn", "scores_hook"), (12, SEQ_LENGTH, SEQ_LENGTH)),
+        (("block_5", "attn", "weights_hook"), (12, SEQ_LENGTH, SEQ_LENGTH)),
+        (("block_6", "attn", "z_hook"), (SEQ_LENGTH, 12, 64)),
+        (("block_7", "attn", "output_hook"), (SEQ_LENGTH, 768)),
+        (("block_0", "ln_1", "std_hook"), (SEQ_LENGTH, 768)),
+        (("block_1", "ln_2", "normalized_hook"), (SEQ_LENGTH, 768)),
+        (("ln_f", "std_hook"), (SEQ_LENGTH, 768)),
+        (("ln_f", "normalized_hook"), (SEQ_LENGTH, 768)),
+    ],
+    ids=format_nested_ids,
+)
+def test_nested_transformer_hooks_are_called(
+    transformer: Transformer,
+    transformer_params: Params,
+    hook_path: KeyPath,
+    expected: Sequence[int],
+):
+    hooks = temp_hooks = {}
+    for key in hook_path[:-1]:
+        temp_hooks[key] = {}
+        temp_hooks = temp_hooks[key]
+
+    temp_hooks[hook_path[-1]] = store_hook
+
+    variables = {"params": transformer_params}
+    inputs = jnp.ones((SEQ_LENGTH,), jnp.int32)
+    _, state = transformer.apply(variables, inputs, hooks, mutable=["intermediates"])
+
+    state_ = state["intermediates"]
+    for key in hook_path:
+        state_ = state_[key]
+
+    assert state_[0].shape == expected
 
 
 if __name__ == "__main__":

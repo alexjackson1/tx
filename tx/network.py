@@ -186,7 +186,6 @@ class GenerativeModel:
     def run_with_intermediates(self, tokens: Tokens) -> Tuple[Logits, Params, Params]:
         # TODO: Not working (need to replace self.params with blank hooks)
         self.hooks = jax.tree_util.tree_map(lambda _: store_hook, self.params)
-
         self.hook_collections = list_union(self.hook_collections, ["intermediates"])
         self.mutable = list_union(self.mutable, ["intermediates"])
         logits, output = self.run(tokens)
