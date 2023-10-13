@@ -5,11 +5,11 @@ from typing import Dict, Optional
 import jax.numpy as jnp
 from transformers import FlaxGPT2LMHeadModel, GPT2TokenizerFast
 
-from tx.modules.transformer import TransformerConfig
+from .module import GPT2Config
 
 
-class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
-    tx_config = TransformerConfig(
+class GPT2Loader(FlaxGPT2LMHeadModel):
+    tx_config = GPT2Config(
         vocab_dim=50257,
         context_length=1024,
         model_dim=768,
@@ -33,7 +33,7 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
         decode: bool = False,
         dtype: Optional[jnp.dtype] = None,
         param_dtype: jnp.dtype = jnp.float64,
-    ) -> TransformerConfig:
+    ) -> GPT2Config:
         return cls.tx_config.replace(
             decode=decode, dtype=dtype, param_dtype=param_dtype
         )
@@ -49,7 +49,7 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
             "embed": params["wte"],
             "pos_embed": params["wpe"],
             **{
-                f"block_{i}": PretrainedGPT2Model.block_params(blocks[f"{i}"])
+                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"])
                 for i in range(len(blocks))
             },
             "ln_f": params["ln_f"],
@@ -119,7 +119,7 @@ class PretrainedGPT2Model(FlaxGPT2LMHeadModel):
             "embed": params["wte"],
             "pos_embed": params["wpe"],
             **{
-                f"block_{i}": PretrainedGPT2Model.block_params(blocks[f"{i}"])
+                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"])
                 for i in range(len(blocks))
             },
             "ln_f": params["ln_f"],

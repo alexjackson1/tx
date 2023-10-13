@@ -1,10 +1,10 @@
 import jax.numpy as jnp
 
-from tx.modules import TransformerConfig
+from tx.models import GPT2Config
 from tx.tree_util import Params
 
 
-def tfs_attention_params(cfg: TransformerConfig, params: Params) -> Params:
+def tfs_attention_params(cfg: GPT2Config, params: Params) -> Params:
     """Convert `tx` attention parameters to `tfs` attention parameters."""
     model_dim, num_heads, head_dim = (cfg.model_dim, cfg.num_heads, cfg.head_dim)
 
@@ -70,7 +70,7 @@ def tfs_unembed_params(_cfg, params: Params) -> Params:
     return {"W_U": params["kernel"], "b_U": params["bias"]}
 
 
-def tfs_transformer_params(cfg: TransformerConfig, params: Params) -> Params:
+def tfs_transformer_params(cfg: GPT2Config, params: Params) -> Params:
     """Convert `tx` transformer parameters to `tfs` transformer parameters.
 
     Args:

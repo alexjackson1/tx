@@ -12,7 +12,8 @@ import pytest
 import jax.random as jr
 import jax.numpy as jnp
 
-import tx
+from tx.modules import MultiHeadAttention
+from tx.models import GPT2Config, GPT2Transformer
 
 
 @pytest.fixture
@@ -22,12 +23,12 @@ def rng():
 
 @pytest.fixture
 def config():
-    return tx.TransformerConfig(dtype=jnp.float32, param_dtype=jnp.float32)
+    return GPT2Config(dtype=jnp.float32, param_dtype=jnp.float32)
 
 
 @pytest.fixture
-def decode_module(config: tx.TransformerConfig):
-    return tx.MultiHeadAttention(
+def decode_module(config: GPT2Config):
+    return MultiHeadAttention(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
         features=config.model_dim,
@@ -52,7 +53,7 @@ def count_populated_entries(
 @pytest.mark.parametrize("seq_len", [1, 5, 1024], ids=f("seq_len"))
 def test_initialises_cache_correctly(
     rng: Array,
-    decode_module: tx.MultiHeadAttention,
+    decode_module: MultiHeadAttention,
     batch_dims: Sequence[int],
     seq_len: int,
 ):
@@ -81,7 +82,7 @@ def test_initialises_cache_correctly(
 @pytest.mark.parametrize("seq_len", [1, 5], ids=f("seq_len"))
 def test_populates_cache_correctly(
     rng: Array,
-    decode_module: tx.MultiHeadAttention,
+    decode_module: MultiHeadAttention,
     batch_dims: Sequence[int],
     seq_len: int,
 ):

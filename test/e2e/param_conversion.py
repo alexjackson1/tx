@@ -1,10 +1,10 @@
 import jax.numpy as jnp
 
-from tx.modules.transformer import TransformerConfig
+from tx.models import GPT2Config
 from tx.tree_util import Params
 
 
-def to_flax(config: TransformerConfig, tx_params: Params) -> Params:
+def to_flax(config: GPT2Config, tx_params: Params) -> Params:
     shape = (config.num_heads, config.head_dim, config.model_dim)
     keys = ["query", "key", "value"]
 

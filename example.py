@@ -9,9 +9,9 @@ import jax
 
 if __name__ == "__main__":
     from tx.modules import Transformer
-    from tx.models import PretrainedGPT2Model
+    from tx.models import GPT2Loader
 
-    config = PretrainedGPT2Model.tx_config
+    config = GPT2Loader.tx_config
 
     def make_hook(name):
         def hook(x, **kwargs):

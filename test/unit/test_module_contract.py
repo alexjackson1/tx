@@ -11,9 +11,9 @@ import pytest
 
 import jax.random as jr
 import jax.numpy as jnp
-import flax.linen as nn
 
 import tx
+from tx.models.gpt2 import GPT2Config, GPT2MLP, GPT2TransformerBlock, GPT2Transformer
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def rng():
 
 @pytest.fixture
 def config():
-    return tx.TransformerConfig(dtype=jnp.float32, param_dtype=jnp.float32)
+    return GPT2Config(dtype=jnp.float32, param_dtype=jnp.float32)
 
 
 def format_params(batch_dims: Sequence[int]) -> str:
@@ -31,9 +31,7 @@ def format_params(batch_dims: Sequence[int]) -> str:
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_embed_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
+def test_embed_contract(rng: Array, config: GPT2Config, batch_dims: Sequence[int]):
     INIT_LEN = 4
     APPLY_LEN = 7
 
@@ -49,9 +47,7 @@ def test_embed_contract(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_pos_embed_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
+def test_pos_embed_contract(rng: Array, config: GPT2Config, batch_dims: Sequence[int]):
     INIT_LEN = 4
     APPLY_LEN = 7
 
@@ -69,9 +65,7 @@ def test_pos_embed_contract(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_attention_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
+def test_attention_contract(rng: Array, config: GPT2Config, batch_dims: Sequence[int]):
     INIT_LEN = 4
     APPLY_LEN = 7
 
@@ -94,13 +88,11 @@ def test_attention_contract(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_mlp_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
+def test_mlp_contract(rng: Array, config: GPT2Config, batch_dims: Sequence[int]):
     INIT_LEN = 4
     APPLY_LEN = 7
 
-    layer = tx.MLP(features=[config.mlp_dim, config.model_dim])
+    layer = GPT2MLP(features=[config.mlp_dim, config.model_dim])
     init_input: Float[Array, "... S F"] = jr.uniform(
         rng, (*batch_dims, INIT_LEN, config.model_dim)
     )
@@ -128,12 +120,12 @@ def test_layer_norm_contract(rng: Array, batch_dims: Sequence[int]):
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_transformer_block_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: GPT2Config, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
 
-    layer = tx.TransformerBlock(
+    layer = GPT2TransformerBlock(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
         model_dim=config.model_dim,
@@ -154,9 +146,7 @@ def test_transformer_block_contract(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_unembed_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
+def test_unembed_contract(rng: Array, config: GPT2Config, batch_dims: Sequence[int]):
     INIT_LEN = 4
     APPLY_LEN = 7
 
@@ -175,12 +165,12 @@ def test_unembed_contract(
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
 def test_transformer_contract(
-    rng: Array, config: tx.TransformerConfig, batch_dims: Sequence[int]
+    rng: Array, config: GPT2Config, batch_dims: Sequence[int]
 ):
     INIT_LEN = 4
     APPLY_LEN = 7
 
-    model = tx.Transformer.from_config(config)
+    model = GPT2Transformer.from_config(config)
     init_input: Int[Array, "... S"] = jnp.ones((*batch_dims, INIT_LEN), dtype=jnp.int32)
     variables = model.init(rng, init_input)
 

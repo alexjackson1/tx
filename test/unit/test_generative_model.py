@@ -16,6 +16,7 @@ from transformers import GPT2TokenizerFast
 
 import tx
 import tx.network
+from tx.models.gpt2 import GPT2Config, GPT2Transformer
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ def rng():
 
 @pytest.fixture
 def config():
-    return tx.TransformerConfig(dtype=jnp.float32, param_dtype=jnp.float32)
+    return GPT2Config(dtype=jnp.float32, param_dtype=jnp.float32)
 
 
 @pytest.fixture
@@ -61,7 +62,7 @@ def test_configure_tokenizer(blank_tokenizer):
 
 
 def test_token_ops_raise_errors(config):
-    model = tx.network.GenerativeModel(config)
+    model = tx.network.GenerativeModel(GPT2Transformer, config)
 
     with pytest.raises(ValueError):
         model.to_tokens("Example input", prepend_bos=True)
@@ -84,10 +85,10 @@ def test_token_ops_raise_errors(config):
 def test_token_ops_with_int_ids(
     input: Union[int, List[int]],
     expected: str,
-    config: tx.TransformerConfig,
+    config: GPT2Config,
     tokenizer: GPT2TokenizerFast,
 ):
-    model = tx.network.GenerativeModel(config, tokenizer=tokenizer)
+    model = tx.network.GenerativeModel(GPT2Transformer, config, tokenizer=tokenizer)
     assert model.to_str(input) == expected
     assert model.to_str(jnp.array(input)) == expected
     assert model.to_str_list(input) == [c for c in expected]
@@ -106,9 +107,9 @@ def test_token_ops_with_string(
     input: str,
     str_array: List[str],
     tokens: Array,
-    config: tx.TransformerConfig,
+    config: GPT2Config,
     tokenizer: GPT2TokenizerFast,
 ):
-    model = tx.network.GenerativeModel(config, tokenizer=tokenizer)
+    model = tx.network.GenerativeModel(GPT2Transformer, config, tokenizer=tokenizer)
     assert model.to_str_list(input) == str_array
     assert jnp.all(model.to_tokens(input) == tokens)

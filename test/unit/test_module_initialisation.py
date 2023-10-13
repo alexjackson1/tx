@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 
 import tx
+from tx.models.gpt2 import GPT2Config, GPT2MLP, GPT2TransformerBlock, GPT2Transformer
 
 RNG = jr.PRNGKey(0)
 ERROR = 1e-4
@@ -22,7 +23,7 @@ ERROR = 1e-4
 
 @pytest.fixture
 def config():
-    return tx.TransformerConfig(dtype=jnp.float32, param_dtype=jnp.float32)
+    return GPT2Config(dtype=jnp.float32, param_dtype=jnp.float32)
 
 
 def format_params(batch_dims: Sequence[int]) -> str:
@@ -30,7 +31,7 @@ def format_params(batch_dims: Sequence[int]) -> str:
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_embed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
+def test_embed_init(config: GPT2Config, batch_dims: Sequence[int]):
     layer = tx.Embed(
         features=config.model_dim,
         num_embeddings=config.vocab_dim,
@@ -46,7 +47,7 @@ def test_embed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_pos_embed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
+def test_pos_embed_init(config: GPT2Config, batch_dims: Sequence[int]):
     layer = tx.PosEmbed(
         features=config.model_dim,
         num_embeddings=config.context_length,
@@ -64,7 +65,7 @@ def test_pos_embed_init(config: tx.TransformerConfig, batch_dims: Sequence[int])
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_attention_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
+def test_attention_init(config: GPT2Config, batch_dims: Sequence[int]):
     layer = tx.MultiHeadAttention(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
@@ -86,8 +87,8 @@ def test_attention_init(config: tx.TransformerConfig, batch_dims: Sequence[int])
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_mlp_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
-    layer = tx.MLP(
+def test_mlp_init(config: GPT2Config, batch_dims: Sequence[int]):
+    layer = GPT2MLP(
         features=[config.mlp_dim, config.model_dim],
         init_range=config.init_range,
     )
@@ -103,7 +104,7 @@ def test_mlp_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_layer_norm_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
+def test_layer_norm_init(config: GPT2Config, batch_dims: Sequence[int]):
     layer = tx.LayerNorm(epsilon=config.layer_norm_eps)
 
     input: Float[Array, "S F"] = jnp.ones(
@@ -121,10 +122,8 @@ def test_layer_norm_init(config: tx.TransformerConfig, batch_dims: Sequence[int]
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_transformer_block_init(
-    config: tx.TransformerConfig, batch_dims: Sequence[int]
-):
-    layer = tx.TransformerBlock(
+def test_transformer_block_init(config: GPT2Config, batch_dims: Sequence[int]):
+    layer = GPT2TransformerBlock(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
         model_dim=config.model_dim,
@@ -148,7 +147,7 @@ def test_transformer_block_init(
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_unembed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
+def test_unembed_init(config: GPT2Config, batch_dims: Sequence[int]):
     layer = tx.Unembed(
         features=config.model_dim,
         num_embeddings=config.vocab_dim,
@@ -166,8 +165,8 @@ def test_unembed_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
 
 
 @pytest.mark.parametrize("batch_dims", [(), (1,), (2,), (1, 2)], ids=format_params)
-def test_transformer_init(config: tx.TransformerConfig, batch_dims: Sequence[int]):
-    model = tx.Transformer.from_config(config)
+def test_transformer_init(config: GPT2Config, batch_dims: Sequence[int]):
+    model = GPT2Transformer.from_config(config)
 
     input: Int[Array, "S"] = jnp.ones((*batch_dims, 4), dtype=jnp.int32)
     variables = model.init(RNG, input)

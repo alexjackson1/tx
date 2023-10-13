@@ -11,23 +11,29 @@ import pytest
 import jax.numpy as jnp
 
 import tx
-from tx.models import PretrainedGPT2Model
+from tx.models.gpt2 import (
+    GPT2Loader,
+    GPT2Config,
+    GPT2TransformerBlock,
+    GPT2Transformer,
+    GPT2MLP,
+)
 from tx.tree_util import Params
 
 
 @pytest.fixture
 def gpt2_params():
-    return PretrainedGPT2Model.from_pretrained("gpt2").to_params()
+    return GPT2Loader.from_pretrained("gpt2").to_params()
 
 
 @pytest.fixture
 def gpt2_config():
-    return PretrainedGPT2Model.from_pretrained("gpt2").make_config(
+    return GPT2Loader.from_pretrained("gpt2").make_config(
         dtype=jnp.float32, param_dtype=jnp.float32
     )
 
 
-def test_embed_with_gpt2_params(gpt2_config: tx.TransformerConfig, gpt2_params: Params):
+def test_embed_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
     model = tx.Embed(
         features=gpt2_config.model_dim,
         num_embeddings=gpt2_config.vocab_dim,
@@ -39,9 +45,7 @@ def test_embed_with_gpt2_params(gpt2_config: tx.TransformerConfig, gpt2_params: 
     assert output.shape == (gpt2_config.context_length, gpt2_config.model_dim)
 
 
-def test_pos_embed_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
-):
+def test_pos_embed_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
     model = tx.PosEmbed(
         features=gpt2_config.model_dim,
         num_embeddings=gpt2_config.context_length,
@@ -53,9 +57,7 @@ def test_pos_embed_with_gpt2_params(
     assert output.shape == (gpt2_config.context_length, gpt2_config.model_dim)
 
 
-def test_attention_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
-):
+def test_attention_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
     model = tx.MultiHeadAttention(
         num_heads=gpt2_config.num_heads,
         head_dim=gpt2_config.head_dim,
@@ -71,8 +73,8 @@ def test_attention_with_gpt2_params(
     assert output.shape == (gpt2_config.context_length, gpt2_config.model_dim)
 
 
-def test_mlp_with_gpt2_params(gpt2_config: tx.TransformerConfig, gpt2_params: Params):
-    model = tx.MLP(
+def test_mlp_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
+    model = GPT2MLP(
         features=[gpt2_config.mlp_dim, gpt2_config.model_dim],
         dtype=gpt2_config.dtype,
         param_dtype=gpt2_config.param_dtype,
@@ -85,9 +87,7 @@ def test_mlp_with_gpt2_params(gpt2_config: tx.TransformerConfig, gpt2_params: Pa
     assert output.shape == (gpt2_config.context_length, gpt2_config.model_dim)
 
 
-def test_layer_norm_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
-):
+def test_layer_norm_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
     model = tx.LayerNorm(
         epsilon=gpt2_config.layer_norm_eps,
         dtype=gpt2_config.dtype,
@@ -102,9 +102,9 @@ def test_layer_norm_with_gpt2_params(
 
 
 def test_transformer_block_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
+    gpt2_config: GPT2Config, gpt2_params: Params
 ):
-    model = tx.TransformerBlock(
+    model = GPT2TransformerBlock(
         num_heads=gpt2_config.num_heads,
         head_dim=gpt2_config.head_dim,
         model_dim=gpt2_config.model_dim,
@@ -120,9 +120,7 @@ def test_transformer_block_with_gpt2_params(
     assert output.shape == (gpt2_config.context_length, gpt2_config.model_dim)
 
 
-def test_unembed_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
-):
+def test_unembed_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
     model = tx.Unembed(
         features=gpt2_config.model_dim,
         num_embeddings=gpt2_config.vocab_dim,
@@ -137,10 +135,8 @@ def test_unembed_with_gpt2_params(
     assert output.shape == (gpt2_config.context_length, gpt2_config.vocab_dim)
 
 
-def test_transformer_with_gpt2_params(
-    gpt2_config: tx.TransformerConfig, gpt2_params: Params
-):
-    model = tx.Transformer.from_config(gpt2_config)
+def test_transformer_with_gpt2_params(gpt2_config: GPT2Config, gpt2_params: Params):
+    model = GPT2Transformer.from_config(gpt2_config)
     variables = {"params": gpt2_params}
     input_data = jnp.ones((gpt2_config.context_length,), dtype=jnp.int32)
     output: Array = model.apply(variables, input_data)

@@ -24,7 +24,7 @@ from transformers.models.gpt2.modeling_flax_gpt2 import (
 )
 
 import tx
-from tx.models import PretrainedGPT2Model  # for converting params
+from tx.models.gpt2 import GPT2Loader, GPT2TransformerBlock
 
 HF_INIT_FN = jax.nn.initializers.normal(stddev=0.02)
 PRECISION = 1e-6
@@ -33,7 +33,7 @@ DTYPE = jnp.float64
 
 @pytest.fixture
 def gpt2():
-    return PretrainedGPT2Model.from_pretrained("gpt2")
+    return GPT2Loader.from_pretrained("gpt2")
 
 
 @pytest.fixture
@@ -92,7 +92,7 @@ def tx_transformer_block(
     mlp_dim: int,
     input: Array,
 ) -> Array:
-    module = tx.TransformerBlock(
+    module = GPT2TransformerBlock(
         num_heads=num_heads,
         head_dim=head_dim,
         model_dim=model_dim,
@@ -175,7 +175,7 @@ def hf_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Arr
     return hf_apply(module, params, input)
 
 
-def test_attn_with_gpt2_params(gpt2: PretrainedGPT2Model):
+def test_attn_with_gpt2_params(gpt2: GPT2Loader):
     gpt2_params = gpt2.to_params()
 
     input = jr.uniform(jax.random.PRNGKey(0), (1024, 768), dtype=DTYPE)
@@ -187,7 +187,7 @@ def test_attn_with_gpt2_params(gpt2: PretrainedGPT2Model):
     assert jnp.allclose(tx_output, hf_output, atol=PRECISION, rtol=PRECISION)
 
 
-def test_with_gpt2_params(gpt2: PretrainedGPT2Model, tokenizer: GPT2TokenizerFast):
+def test_with_gpt2_params(gpt2: GPT2Loader, tokenizer: GPT2TokenizerFast):
     gpt2_params = gpt2.to_params()
     gpt2_config = gpt2.tx_config
 

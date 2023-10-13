@@ -5,11 +5,11 @@ import jax.numpy as jnp
 import flax.linen as nn
 import einops
 
-from tx.modules import TransformerConfig
+from tx.models import GPT2Config
 
 
 class Attention(nn.Module):
-    cfg: TransformerConfig
+    cfg: GPT2Config
 
     def setup(self):
         init_fn = nn.initializers.normal(stddev=self.cfg.init_range)

@@ -17,7 +17,8 @@ from pytest_mock import MockerFixture
 import jax.random as jr
 import jax.numpy as jnp
 
-from tx import TransformerConfig, Transformer, MLP, MultiHeadAttention, LayerNorm
+from tx.modules import MultiHeadAttention, LayerNorm
+from tx.models.gpt2 import GPT2Config, GPT2Transformer, GPT2MLP
 from tx.hooks import store_hook
 from tx.tree_util import KeyPath, Params
 
@@ -29,21 +30,21 @@ def rng():
 
 @pytest.fixture
 def config():
-    return TransformerConfig()
+    return GPT2Config()
 
 
 @pytest.fixture
-def transformer(config: TransformerConfig) -> Transformer:
-    return Transformer.from_config(config)
+def transformer(config: GPT2Config) -> GPT2Transformer:
+    return GPT2Transformer.from_config(config)
 
 
 @pytest.fixture
-def mlp(config: TransformerConfig) -> MLP:
-    return MLP(features=[config.mlp_dim, config.model_dim])
+def mlp(config: GPT2Config) -> GPT2MLP:
+    return GPT2MLP(features=[config.mlp_dim, config.model_dim])
 
 
 @pytest.fixture
-def multi_head_attention(config: TransformerConfig) -> MultiHeadAttention:
+def multi_head_attention(config: GPT2Config) -> MultiHeadAttention:
     return MultiHeadAttention(
         features=config.model_dim,
         num_heads=config.num_heads,
@@ -52,17 +53,17 @@ def multi_head_attention(config: TransformerConfig) -> MultiHeadAttention:
 
 
 @pytest.fixture
-def layer_norm(config: TransformerConfig) -> LayerNorm:
+def layer_norm(config: GPT2Config) -> LayerNorm:
     return LayerNorm(epsilon=config.layer_norm_eps)
 
 
 @pytest.fixture
-def transformer_params(rng, transformer: Transformer) -> Params:
+def transformer_params(rng, transformer: GPT2Transformer) -> Params:
     return transformer.init(rng, jnp.ones((256,), jnp.int32))["params"]
 
 
 @pytest.fixture
-def mlp_params(rng, mlp: MLP) -> Params:
+def mlp_params(rng, mlp: GPT2MLP) -> Params:
     return mlp.init(rng, jnp.ones((256,)))["params"]
 
 
@@ -91,7 +92,7 @@ def make_hook_fn(stub):
 )
 def test_transformer_hooks_called(
     mocker: MockerFixture,
-    transformer: Transformer,
+    transformer: GPT2Transformer,
     transformer_params: Params,
     hook_name: str,
 ):
@@ -112,7 +113,7 @@ def test_transformer_hooks_called(
 def test_mlp_hooks_called(
     rng: Array,
     mocker: MockerFixture,
-    mlp: MLP,
+    mlp: GPT2MLP,
     mlp_params: Params,
     hook_name: str,
 ):
@@ -193,7 +194,7 @@ def format_ids(val):
     ids=format_ids,
 )
 def test_transformer_hooks_can_store_values(
-    transformer: Transformer,
+    transformer: GPT2Transformer,
     transformer_params: Params,
     hook_name: str,
     expected: Sequence[int],
@@ -217,7 +218,7 @@ def test_transformer_hooks_can_store_values(
 )
 def test_mlp_hooks_can_store_values(
     rng: Array,
-    mlp: MLP,
+    mlp: GPT2MLP,
     mlp_params: Params,
     hook_name: str,
     expected: Sequence[int],
@@ -317,7 +318,7 @@ def format_nested_ids(val):
     ids=format_nested_ids,
 )
 def test_nested_transformer_hooks_are_called(
-    transformer: Transformer,
+    transformer: GPT2Transformer,
     transformer_params: Params,
     hook_path: KeyPath,
     expected: Sequence[int],

@@ -15,14 +15,13 @@ import jax.numpy as jnp
 
 from transformers import GPT2TokenizerFast
 
-from tx import TransformerConfig
-from tx.models.gpt2 import PretrainedGPT2Model
+from tx.models import GPT2Config, GPT2Loader, GPT2Transformer
 from tx.network import GenerativeModel
 
 
 @pytest.fixture
 def gpt2():
-    return PretrainedGPT2Model.from_pretrained("gpt2")
+    return GPT2Loader.from_pretrained("gpt2")
 
 
 @pytest.fixture
@@ -31,15 +30,16 @@ def config(gpt2):
 
 
 @pytest.fixture
-def model(gpt2: PretrainedGPT2Model, config: TransformerConfig):
+def model(gpt2: GPT2Loader, config: GPT2Config):
     return GenerativeModel(
+        module_cls=GPT2Transformer,
         config=config,
         tokenizer=GPT2TokenizerFast.from_pretrained("gpt2"),
         params=gpt2.to_params(),
     )
 
 
-def check_cache_contents(cache: dict, config: TransformerConfig, num_tokens: int):
+def check_cache_contents(cache: dict, config: GPT2Config, num_tokens: int):
     # Extract and check the shapes of the cached attention keys and values
     cached_key: Array = cache["block_0"]["attn"]["cached_key"]
     cached_value: Array = cache["block_0"]["attn"]["cached_value"]
@@ -77,7 +77,6 @@ def test_gpt2_model(model: GenerativeModel):
     assert config.decode
     assert model.tokenizer is not None
     assert model.params is not None
-    assert model.hooks is not None
 
     # Use the model to convert the prompt to tokens, check output
     tokens: Int[Array, "S"] = model.to_tokens(prompt, prepend_bos=True)

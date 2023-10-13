@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, Optional
 
 import flax.linen as nn
 
-from tx.tree_util import KeyPath, tree_contains_path
+from tx.tree_util import KeyPath, tree_contains_path, tree_compose
 
 HookFn = Callable[[Array, Dict[str, Any]], Array]
 """A function that applies a hook to an array."""
@@ -35,6 +35,11 @@ def compose_hooks(*hooks: HookFn) -> HookFn:
         return x
 
     return new_hook
+
+
+def compose_hook_trees(*hook_trees: PyTree[HookFn]) -> PyTree[HookFn]:
+    """Composes multiple hook trees into a single hook tree."""
+    return tree_compose(compose_hooks, *hook_trees)
 
 
 def store_hook(

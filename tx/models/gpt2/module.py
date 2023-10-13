@@ -7,13 +7,15 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from .common import LayerNorm, Embed, PosEmbed, Unembed
-from .attention import MultiHeadAttention
-from ..hooks import apply_hooks, HookFn
+from tx.modules.common import LayerNorm, Embed, PosEmbed, Unembed
+from tx.modules.attention import MultiHeadAttention
+from tx.hooks import apply_hooks, HookFn
+
+from ..base import TransformerConfig, BaseTransformer
 
 
 @dataclass
-class TransformerConfig:
+class GPT2Config(TransformerConfig):
     """Configuration for the `Transformer` module.
 
     Attributes:
@@ -59,7 +61,7 @@ class TransformerConfig:
     def replace(self, **kwargs):
         """Returns a new `TransformerConfig` object with the specified
         attributes replaced."""
-        return TransformerConfig(**{**self.__dict__, **kwargs})
+        return GPT2Config(**{**self.__dict__, **kwargs})
 
 
 class MLP(nn.Module):
@@ -222,7 +224,7 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class Transformer(nn.Module):
+class Transformer(BaseTransformer):
     """Transformer module.
 
     Attributes:
@@ -280,9 +282,9 @@ class Transformer(nn.Module):
     """The dtype of the parameters."""
 
     @classmethod
-    def from_config(cls, config: TransformerConfig, **kwargs):
+    def from_config(cls, config: GPT2Config, **kwargs):
         """Creates a `Transformer` module from a `TransformerConfig` object."""
-        return cls(**config.__dict__, **kwargs)
+        return cls(config=config, **config.__dict__, **kwargs)
 
     @nn.compact
     def __call__(

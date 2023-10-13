@@ -1,15 +1,20 @@
-import jax
 from jaxtyping import Array, Float, PyTree
-from typing import Iterable, List, Literal, Optional, Tuple, Union
+from typing import Iterable, List, Literal, Optional, Tuple, Type, Union
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
 from transformers import PreTrainedTokenizerBase
 
-from .modules import Transformer, TransformerConfig
-from .models import index
-from .hooks import HookFn, store_hook
+from .hooks import HookFn, compose_hook_trees, store_hook
+from .models import (
+    ModelKey,
+    TransformerConfig,
+    BaseTransformer,
+    load_pretrained_model,
+)
+
 from .tree_util import Params
 
 
@@ -36,7 +41,6 @@ Tokens = Union[int, Iterable[int]]
 String = str
 TokensOrString = Union[Tokens, String]
 Logits = Float[Array, "S"]
-
 ReturnType = Literal["logits", "preds", "loss"]
 
 
@@ -46,68 +50,79 @@ def list_union(a: List[str], b: List[str]) -> List[str]:
 
 class GenerativeModel:
     config: TransformerConfig
-    decode: bool
-    module: Transformer
-
+    """Transformer configuration object."""
+    module_class: Type[BaseTransformer]
+    """Transformer module class."""
+    module: Optional[BaseTransformer] = None
+    """Transformer module."""
+    params: Optional[PyTree[Array]] = None
+    """Model parameters."""
     tokenizer: Optional[PreTrainedTokenizerBase] = None
-    params: Optional[Params] = None
-    hooks: PyTree[HookFn] = {}
-    mutable: List[str]
-    hook_collections: List[str]
-    cache: Optional[Params] = None
+    """Tokenizer to use for converting between strings and tokens."""
+    cache: Optional[PyTree[Array]] = None
+    """Cache to use for decoding."""
+    mutable: List[str] = []
+    """Mutable collections to use for decoding."""
 
     def __init__(
         self,
+        module_cls: Type[BaseTransformer],
         config: TransformerConfig,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         params: Optional[Params] = None,
-        hooks: Optional[PyTree[HookFn]] = None,
-        hook_collections: List[str] = [],
     ):
         self.config = config
-        self.decode = config.decode
-        self.module = Transformer.from_config(config)
+        self.module_class = module_cls
 
+        # Configure the tokenizer if provided
         if tokenizer is not None:
             self.tokenizer = configure_tokenizer(tokenizer)
 
+        # Set the parameters if provided
         if params is not None:
             self.params = params
 
-        if self.decode:
+        # If decoding, set the cache as mutable
+        if self.config.decode:
             self.mutable = ["cache"]
-        else:
-            self.mutable = []
 
-        self.hook_collections = hook_collections
-        self.mutable = list_union(self.mutable, hook_collections)
-        if hooks is not None:
-            self.hooks = hooks
-        else:
-            self.hooks = {}
-
-    def reset(self):
-        self.cache = None
-        self.hooks = {}
-        self.hook_collections = []
-        self.mutable = ["cache"] if self.decode else []
+        # Initialise the module
+        self.init_module()
 
     @classmethod
     def from_pretrained(
-        cls,
-        model_id: index.ModelStr,
-        tokenizer: Optional[PreTrainedTokenizerBase] = None,
-        hooks: Optional[PyTree[HookFn]] = None,
-        hook_collections: List[str] = [],
+        cls, model_id: ModelKey, tokenizer: Optional[PreTrainedTokenizerBase] = None
     ) -> "GenerativeModel":
-        model_details = index.load_pretrained_model(model_id)
+        model_details = load_pretrained_model(model_id)
         return cls(
+            model_details.module_class,
             model_details.config,
             tokenizer=model_details.tokenizer if tokenizer is None else tokenizer,
             params=model_details.params,
-            hooks=hooks,
-            hook_collections=hook_collections,
         )
+
+    def init_module(self):
+        """Initialise the module."""
+        if self.module is None:
+            self.module = self.module_class.from_config(self.config)
+
+    def set_tokenizer(self, tokenizer: PreTrainedTokenizerBase):
+        """Set the tokenizer."""
+        self.tokenizer = configure_tokenizer(tokenizer)
+
+    def reset_cache(self):
+        """Reset the cache."""
+        self.cache = None
+        self.mutable = ["cache"] if self.config.decode else []
+
+    def reset_params(self):
+        """Reset the parameters."""
+        self.params = None
+
+    def reset(self):
+        """Reset the model."""
+        self.reset_cache()
+        self.reset_params()
 
     def to_tokens(
         self,
@@ -115,8 +130,20 @@ class GenerativeModel:
         prepend_bos: bool = False,
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
-        extra_batch_dims=0,
+        extra_batch_dims: int = 0,
     ) -> Tokens:
+        """Convert a string to an array of token(s).
+
+        Args:
+            input: Input string.
+            prepend_bos: Whether to prepend the BOS token.
+            truncate: Whether to truncate the input.
+            max_length: Maximum length of the input.
+            extra_batch_dims: Number of extra batch dimensions to add.
+
+        Returns:
+            The token(s) corresponding to the input string.
+        """
         if self.tokenizer is None:
             raise ValueError("Tokenizer not provided")
 
@@ -135,6 +162,16 @@ class GenerativeModel:
         return jnp.reshape(output["input_ids"][0], (*batch_dims, -1))
 
     def to_str(self, tokens: Tokens, clean_spaces: bool = False) -> String:
+        """Convert a (array of) token(s) to a string.
+
+        Args:
+            tokens: Input token(s).
+            clean_spaces: Whether to clean up the tokenisation spaces.
+
+        Returns:
+            The string corresponding to the input token(s).
+        """
+
         if self.tokenizer is None:
             raise ValueError("Tokenizer not provided")
 
@@ -147,6 +184,17 @@ class GenerativeModel:
         truncate: bool = True,
         max_length: Union[int, None] = 1024,
     ) -> List[str]:
+        """Convert a (array of) token(s) to a list of strings.
+
+        Args:
+            input: Input token(s) or string.
+            prepend_bos: Whether to prepend the BOS token.
+            truncate: Whether to truncate the input.
+            max_length: Maximum length of the input.
+
+        Returns:
+            The list of strings corresponding to the input token(s).
+        """
         if isinstance(input, String):
             tokens = self.to_tokens(input, prepend_bos, truncate, max_length)
         elif isinstance(input, int):
@@ -156,40 +204,57 @@ class GenerativeModel:
 
         return list(map(self.to_str, tokens))
 
-    def run(self, tokens: Tokens) -> Tuple[Logits, Params]:
+    def run(
+        self,
+        tokens: Tokens,
+        hooks: Optional[PyTree[HookFn]] = None,
+        mutable: List[str] = [],
+    ) -> Tuple[Logits, PyTree[Array]]:
+        if self.module is None:
+            raise ValueError("Module not initialised")
+
         if self.params is None:
             raise ValueError("Params not initialised")
 
         # Initialise the cache if using
-        if self.decode and self.cache is None:
-            input_ids = jnp.ones((self.config.context_length,), jnp.int32)
+        if self.config.decode and self.cache is None:
+            input_ids = jnp.ones((self.module.config.context_length,), jnp.int32)
             variables = self.module.init(jr.PRNGKey(0), input_ids)
             self.cache = variables["cache"]
 
         # Prepare the model variables (params and optional cache)
         variables = {"params": self.params}
-        if self.decode:
+        if self.config.decode:
             variables["cache"] = self.cache
 
+        # Join the provided mutable collections with existing
+        mutable = list_union(mutable, self.mutable)
+
         # Apply the model to the input token(s)
-        logits, state = self.module.apply(
-            variables, tokens, self.hooks, mutable=self.mutable
-        )
+        logits, state = self.module.apply(variables, tokens, hooks, mutable=mutable)
 
         # Store the updated cache state
-        if self.decode:
+        if self.config.decode:
             self.cache = state["cache"]
 
-        output = {k: v for k, v in state.items() if k in self.hook_collections}
-        return logits, output
+        return logits, state
 
-    def run_with_intermediates(self, tokens: Tokens) -> Tuple[Logits, Params, Params]:
+    def run_with_intermediates(
+        self,
+        tokens: Tokens,
+        hooks: Optional[PyTree[HookFn]] = None,
+        mutable: List[str] = [],
+    ) -> Tuple[Logits, PyTree[Array]]:
         # TODO: Not working (need to replace self.params with blank hooks)
-        self.hooks = jax.tree_util.tree_map(lambda _: store_hook, self.params)
-        self.hook_collections = list_union(self.hook_collections, ["intermediates"])
-        self.mutable = list_union(self.mutable, ["intermediates"])
-        logits, output = self.run(tokens)
-        return (logits, output)
+        store_hooks = jax.tree_util.tree_map(lambda _: store_hook, self.params)
+
+        if hooks is not None:
+            hooks = compose_hook_trees(store_hooks, hooks)
+
+        if len(mutable) != 0:
+            mutable = list_union(mutable, self.mutable)
+
+        return self.run(tokens, hooks, mutable)
 
     def __call__(
         self, input: TokensOrString, return_type: Optional[ReturnType] = None

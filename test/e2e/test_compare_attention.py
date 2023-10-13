@@ -15,7 +15,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import flax.linen as nn
 
-from tx.models import PretrainedGPT2Model
+from tx.models import GPT2Loader
 from tx.tree_util import Params
 
 from examples.params import tfs_attention_params
@@ -25,7 +25,8 @@ import param_conversion as convert_params
 # Compare three implementations of MultiHeadAttention
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
-from tx import TransformerConfig, MultiHeadAttention as TxAttention
+from tx import MultiHeadAttention as TxAttention
+from tx.models.gpt2 import GPT2Config
 
 PRECISION = 1e-6
 
@@ -36,17 +37,17 @@ def rng() -> Array:
 
 
 @pytest.fixture
-def gpt2() -> PretrainedGPT2Model:
-    return PretrainedGPT2Model.from_pretrained("gpt2")
+def gpt2() -> GPT2Loader:
+    return GPT2Loader.from_pretrained("gpt2")
 
 
 @pytest.fixture
-def config(gpt2: PretrainedGPT2Model) -> TransformerConfig:
+def config(gpt2: GPT2Loader) -> GPT2Config:
     return gpt2.tx_config
 
 
 @pytest.fixture
-def tx_module(config: TransformerConfig) -> TxAttention:
+def tx_module(config: GPT2Config) -> TxAttention:
     return TxAttention(
         num_heads=config.num_heads,
         head_dim=config.head_dim,
@@ -56,12 +57,12 @@ def tx_module(config: TransformerConfig) -> TxAttention:
 
 
 @pytest.fixture
-def tx_params(gpt2: PretrainedGPT2Model) -> Params:
+def tx_params(gpt2: GPT2Loader) -> Params:
     return gpt2.to_params()["block_0"]["attn"]
 
 
 @pytest.fixture
-def flax_module(config: TransformerConfig) -> nn.Module:
+def flax_module(config: GPT2Config) -> nn.Module:
     return FlaxAttention(
         num_heads=config.num_heads,
         qkv_features=config.model_dim,
@@ -72,17 +73,17 @@ def flax_module(config: TransformerConfig) -> nn.Module:
 
 
 @pytest.fixture
-def flax_params(config: TransformerConfig, tx_params: Params) -> Params:
+def flax_params(config: GPT2Config, tx_params: Params) -> Params:
     return convert_params.to_flax(config, tx_params)
 
 
 @pytest.fixture
-def tfs_module(config: TransformerConfig) -> nn.Module:
+def tfs_module(config: GPT2Config) -> nn.Module:
     return TFSAttention(cfg=config)
 
 
 @pytest.fixture
-def tfs_params(gpt2: PretrainedGPT2Model, tx_params: Params) -> Params:
+def tfs_params(gpt2: GPT2Loader, tx_params: Params) -> Params:
     return tfs_attention_params(gpt2.tx_config, tx_params)
 
 
