@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
-from jaxtyping import Array, Float, Int, PyTree
-from typing import Iterable, Optional
+from jaxtyping import Array, Float, Int, PyTree, PyTreeDef
+from typing import Iterable, List, Optional
 
 import jax
 import jax.numpy as jnp
@@ -96,6 +96,14 @@ class MLP(nn.Module):
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
 
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        """Returns the points at which hooks can be applied to the module."""
+        return {
+            "pre_activation_hook": "",
+            "post_activation_hook": "",
+        }
+
     @nn.compact
     def __call__(
         self, x: Float[Array, "S F1"], hooks: Optional[PyTree[HookFn]] = None
@@ -172,6 +180,16 @@ class TransformerBlock(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        """Returns the points at which hooks can be applied to the module."""
+        return {
+            "attn": MultiHeadAttention.hook_points(),
+            "mlp": MLP.hook_points(),
+            "ln_1": LayerNorm.hook_points(),
+            "ln_2": LayerNorm.hook_points(),
+        }
+
     @nn.compact
     def __call__(
         self, x: Float[Array, "S F"], hooks: Optional[PyTree[HookFn]] = None
@@ -224,7 +242,7 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class Transformer(BaseTransformer):
+class GPT2Transformer(BaseTransformer):
     """Transformer module.
 
     Attributes:
@@ -280,6 +298,21 @@ class Transformer(BaseTransformer):
     """The dtype of the input array."""
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
+
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        """Returns the points at which hooks can be applied to the module."""
+        return {
+            "embed_hook": "... seq features",
+            "pos_embed_hook": "... seq features",
+            "residual_hook": "... seq features",
+            "output_hook": "... seq features",
+            **{
+                f"block_{i}": TransformerBlock.hook_points()
+                for i in range(GPT2Transformer.num_layers)
+            },
+            "ln_f": LayerNorm.hook_points(),
+        }
 
     @classmethod
     def from_config(cls, config: GPT2Config, **kwargs):

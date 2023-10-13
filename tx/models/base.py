@@ -16,6 +16,10 @@ class TransformerConfig:
 class BaseTransformer(nn.Module):
     config: TransformerConfig
 
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        raise NotImplementedError()
+
     @classmethod
     def from_config(cls, config: TransformerConfig) -> "BaseTransformer":
         raise NotImplementedError()

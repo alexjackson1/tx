@@ -1,4 +1,4 @@
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import Array, Float, PyTree, Int
 from typing import Iterable, List, Literal, Optional, Tuple, Type, Union
 
 import jax
@@ -46,6 +46,16 @@ ReturnType = Literal["logits", "preds", "loss"]
 
 def list_union(a: List[str], b: List[str]) -> List[str]:
     return list(set(a).union(set(b)))
+
+
+def next_token_loss(
+    logits: Float[Array, "... S V"],
+    tokens: Int[Array, "... S"],
+) -> Union[Float[Array, ""], Float[Array, "... S"]]:
+    log_probs = jax.nn.log_softmax(logits, axis=-1)
+    offset = log_probs[..., :-1, :]
+    probs = jnp.take_along_axis(offset, tokens[..., 1:, None], axis=-1)[..., 0]
+    return -probs
 
 
 class GenerativeModel:
@@ -161,6 +171,23 @@ class GenerativeModel:
         batch_dims = (0,) * extra_batch_dims
         return jnp.reshape(output["input_ids"][0], (*batch_dims, -1))
 
+    def to_single_token(self, input: String) -> int:
+        """Convert a string to a single token.
+
+        Args:
+            input: Input string.
+
+        Returns:
+            The token corresponding to the input string.
+        """
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not provided")
+
+        tokens = self.tokenizer.encode(input)
+        if len(tokens) != 1:
+            raise ValueError("Input string must be a single token")
+        return tokens[0]
+
     def to_str(self, tokens: Tokens, clean_spaces: bool = False) -> String:
         """Convert a (array of) token(s) to a string.
 
@@ -245,19 +272,25 @@ class GenerativeModel:
         hooks: Optional[PyTree[HookFn]] = None,
         mutable: List[str] = [],
     ) -> Tuple[Logits, PyTree[Array]]:
-        # TODO: Not working (need to replace self.params with blank hooks)
-        store_hooks = jax.tree_util.tree_map(lambda _: store_hook, self.params)
+        hook_points = self.module_class.hook_points()
+        store_hooks = jax.tree_util.tree_map(lambda _: store_hook, hook_points)
 
         if hooks is not None:
             hooks = compose_hook_trees(store_hooks, hooks)
+        else:
+            hooks = store_hooks
 
-        if len(mutable) != 0:
-            mutable = list_union(mutable, self.mutable)
+        mutable = list_union(mutable, self.mutable)
+        mutable = list_union(mutable, ["intermediates"])
 
         return self.run(tokens, hooks, mutable)
 
     def __call__(
-        self, input: TokensOrString, return_type: Optional[ReturnType] = None
+        self,
+        input: TokensOrString,
+        hooks: Optional[PyTree[HookFn]] = None,
+        mutable: List[str] = [],
+        return_type: Optional[ReturnType] = None,
     ) -> Tuple[Logits, Params]:
         if isinstance(input, String):
             tokens = self.to_tokens(input)
@@ -266,7 +299,7 @@ class GenerativeModel:
         else:
             tokens = input
 
-        logits, state = self.run(tokens)
+        logits, state = self.run(tokens, hooks, mutable)
         if return_type is None or return_type == "logits":
             return logits, state
 
@@ -275,7 +308,5 @@ class GenerativeModel:
             return preds, state
 
         if return_type == "loss":
-            labels = jnp.expand_dims(tokens[..., 1:], axis=-1)
-            log_probs = jax.nn.log_softmax(logits[..., :-1, :], axis=-1)
-            log_probs = jnp.take_along_axis(log_probs, labels, axis=-1)
-            return -log_probs.mean(), state
+            loss = next_token_loss(logits, tokens)
+            return loss.mean(), state

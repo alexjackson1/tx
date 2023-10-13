@@ -95,6 +95,18 @@ class MultiHeadAttention(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        return {
+            "query_hook": "... seq num_heads head_dim",
+            "key_hook": "... seq num_heads head_dim",
+            "value_hook": "... seq num_heads head_dim",
+            "scores_hook": "... num_heads query_length key_length",
+            "weights_hook": "... num_heads query_length key_length",
+            "z_hook": "... seq num_heads head_dim",
+            "output_hook": "... seq features",
+        }
+
     @nn.nowrap
     def qkv_dense(self, name: str) -> nn.DenseGeneral:
         return nn.DenseGeneral(

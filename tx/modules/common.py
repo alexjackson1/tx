@@ -37,6 +37,13 @@ class LayerNorm(nn.Module):
     param_dtype: jnp.dtype = jnp.float32
     """The dtype of the parameters."""
 
+    @staticmethod
+    def hook_points() -> PyTree[str]:
+        return {
+            "std_hook": "...",
+            "normalized_hook": "...",
+        }
+
     @nn.compact
     def __call__(self, x: Array, hooks: Optional[PyTree[HookFn]] = None) -> Array:
         """Normalizes the input array using the mean and variance."""
