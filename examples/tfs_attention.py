@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 import einops
 
-from tx.models import GPT2Config
+from tx.models.gpt2 import GPT2Config
 
 
 class Attention(nn.Module):

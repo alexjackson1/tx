@@ -1,4 +1,4 @@
-from tx.models.gpt2.module import GPT2Config, GPT2Transformer
+from tx.models.gpt2.modules import GPT2Config, GPT2Transformer
 
 
 def check_ln_hook_points(hook_points):

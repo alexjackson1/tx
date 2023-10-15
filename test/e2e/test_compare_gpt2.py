@@ -1,5 +1,7 @@
 import os, sys
 
+from tx.models.gpt2.loader import GPT2Loader
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 import jax.config
@@ -19,12 +21,12 @@ import flax.linen as nn
 from transformers import GPT2TokenizerFast
 from transformers.models.gpt2.modeling_flax_gpt2 import (
     FlaxGPT2Block,
-    GPT2Config,
+    GPT2Config as HfGPT2Config,
     FlaxGPT2Attention,
 )
 
-import tx
-from tx.models.gpt2 import GPT2Loader, GPT2TransformerBlock
+from tx.modules import Embed, PosEmbed, MultiHeadAttention, LayerNorm, Unembed
+from tx.models.gpt2.modules import GPT2TransformerBlock, GPT2Config
 
 HF_INIT_FN = jax.nn.initializers.normal(stddev=0.02)
 PRECISION = 1e-6
@@ -34,6 +36,11 @@ DTYPE = jnp.float64
 @pytest.fixture
 def gpt2():
     return GPT2Loader.from_pretrained("gpt2")
+
+
+@pytest.fixture
+def config():
+    return GPT2Config()
 
 
 @pytest.fixture
@@ -54,11 +61,7 @@ def hf_apply(module: nn.Module, params, input: Array) -> Array:
 
 
 def tx_embed(params, model_dim: int, vocab_dim: int, tokens: Array) -> Array:
-    module = tx.Embed(
-        features=model_dim,
-        num_embeddings=vocab_dim,
-        param_dtype=DTYPE,
-    )
+    module = Embed(features=model_dim, num_embeddings=vocab_dim, param_dtype=DTYPE)
     return tx_apply(module, params["embed"], tokens)
 
 
@@ -70,7 +73,7 @@ def hf_embed(params, model_dim: int, vocab_dim: int, tokens: Array) -> Array:
 
 
 def tx_pos_embed(params, model_dim: int, context_length: int, tokens: Array) -> Array:
-    module = tx.PosEmbed(
+    module = PosEmbed(
         features=model_dim, num_embeddings=context_length, param_dtype=DTYPE
     )
     return tx_apply(module, params["pos_embed"], tokens)
@@ -105,7 +108,7 @@ def tx_transformer_block(
 
 def hf_transformer_block(params, name: str, input: Array) -> Array:
     module = FlaxGPT2Block(
-        GPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
+        HfGPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
         dtype=DTYPE,
     )
     input = jnp.expand_dims(input, axis=0)
@@ -115,7 +118,7 @@ def hf_transformer_block(params, name: str, input: Array) -> Array:
 
 
 def tx_attention(params, name: str, input: Array) -> Array:
-    module = tx.MultiHeadAttention(
+    module = MultiHeadAttention(
         features=768,
         num_heads=12,
         head_dim=64,
@@ -129,7 +132,7 @@ def tx_attention(params, name: str, input: Array) -> Array:
 
 def hf_attention(params, name: str, input: Array) -> Array:
     module = FlaxGPT2Attention(
-        GPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
+        HfGPT2Config(resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False),
         dtype=DTYPE,
     )
     input = jnp.expand_dims(input, axis=0)
@@ -139,7 +142,7 @@ def hf_attention(params, name: str, input: Array) -> Array:
 
 
 def tx_ln_f(gpt2_params, input: Array) -> Array:
-    module = tx.LayerNorm(epsilon=1e-5, dtype=DTYPE, param_dtype=DTYPE)
+    module = LayerNorm(epsilon=1e-5, dtype=DTYPE, param_dtype=DTYPE)
     return tx_apply(module, gpt2_params["ln_f"], input)
 
 
@@ -149,7 +152,7 @@ def hf_ln_f(gpt2_params, input: Array) -> Array:
 
 
 def tx_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Array:
-    module = tx.Unembed(
+    module = Unembed(
         features=model_dim,
         num_embeddings=vocab_dim,
         dtype=DTYPE,
@@ -175,9 +178,8 @@ def hf_unembed(gpt2_params, model_dim: int, vocab_dim: int, input: Array) -> Arr
     return hf_apply(module, params, input)
 
 
-def test_attn_with_gpt2_params(gpt2: GPT2Loader):
-    gpt2_params = gpt2.to_params()
-
+def test_attn_with_gpt2_params(gpt2: GPT2Loader, config: GPT2Config):
+    gpt2_params = gpt2.to_params(config)
     input = jr.uniform(jax.random.PRNGKey(0), (1024, 768), dtype=DTYPE)
 
     tx_output = tx_attention(gpt2_params, "block_0", input)
@@ -187,16 +189,17 @@ def test_attn_with_gpt2_params(gpt2: GPT2Loader):
     assert jnp.allclose(tx_output, hf_output, atol=PRECISION, rtol=PRECISION)
 
 
-def test_with_gpt2_params(gpt2: GPT2Loader, tokenizer: GPT2TokenizerFast):
-    gpt2_params = gpt2.to_params()
-    gpt2_config = gpt2.tx_config
+def test_with_gpt2_params(
+    gpt2: GPT2Loader, config: GPT2Config, tokenizer: GPT2TokenizerFast
+):
+    gpt2_params = gpt2.to_params(config)
 
     tokens: Array = tokenizer("Hello, my name is", return_tensors="jax")["input_ids"]
     tokens = jnp.squeeze(tokens, axis=0)
     (seq_length,) = tokens.shape
 
-    vocab_dim, model_dim = gpt2_config.vocab_dim, gpt2_config.model_dim
-    context_length = gpt2_config.context_length
+    vocab_dim, model_dim = config.vocab_dim, config.model_dim
+    context_length = config.context_length
 
     # Embedding
     tx_embed_out = tx_embed(gpt2_params, model_dim, vocab_dim, tokens)
@@ -215,15 +218,15 @@ def test_with_gpt2_params(gpt2: GPT2Loader, tokenizer: GPT2TokenizerFast):
 
     # Transformer blocks
     next_input = tx_embed_out + tx_pos_embed_out
-    for i in range(gpt2_config.num_layers):
+    for i in range(config.num_layers):
         ## Transformer block
         tx_block_out = tx_transformer_block(
             gpt2_params,
             f"block_{i}",
-            num_heads=gpt2_config.num_heads,
-            head_dim=gpt2_config.head_dim,
-            model_dim=gpt2_config.model_dim,
-            mlp_dim=gpt2_config.mlp_dim,
+            num_heads=config.num_heads,
+            head_dim=config.head_dim,
+            model_dim=config.model_dim,
+            mlp_dim=config.mlp_dim,
             input=next_input,
         )
         hf_block_out = hf_transformer_block(gpt2._params, f"{i}", next_input)

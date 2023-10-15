@@ -13,7 +13,6 @@ import jax.random as jr
 import jax.numpy as jnp
 
 from tx.modules import MultiHeadAttention
-from tx.models import GPT2Config, GPT2Transformer
 
 
 @pytest.fixture
@@ -22,18 +21,9 @@ def rng():
 
 
 @pytest.fixture
-def config():
-    return GPT2Config(dtype=jnp.float32, param_dtype=jnp.float32)
-
-
-@pytest.fixture
-def decode_module(config: GPT2Config):
+def decode_module():
     return MultiHeadAttention(
-        num_heads=config.num_heads,
-        head_dim=config.head_dim,
-        features=config.model_dim,
-        init_range=config.init_range,
-        decode=True,
+        num_heads=12, head_dim=64, features=768, init_range=0.02, decode=True
     )
 
 

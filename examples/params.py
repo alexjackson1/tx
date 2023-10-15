@@ -1,14 +1,14 @@
+from jaxtyping import Array, PyTree
 import jax.numpy as jnp
 
-from tx.models import GPT2Config
-from tx.tree_util import Params
+from tx.models.gpt2 import GPT2Config
 
 
-def tfs_attention_params(cfg: GPT2Config, params: Params) -> Params:
+def tfs_attention_params(cfg: GPT2Config, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` attention parameters to `tfs` attention parameters."""
     model_dim, num_heads, head_dim = (cfg.model_dim, cfg.num_heads, cfg.head_dim)
 
-    def split_attn_params(attn: Params) -> Params:
+    def split_attn_params(attn: PyTree[Array]) -> PyTree[Array]:
         q, k, v = (
             jnp.transpose(attn["query"]["kernel"], (1, 0, 2)),
             jnp.transpose(attn["key"]["kernel"], (1, 0, 2)),
@@ -22,7 +22,7 @@ def tfs_attention_params(cfg: GPT2Config, params: Params) -> Params:
 
         return {"W_Q": q, "W_K": k, "W_V": v, "b_Q": q_b, "b_K": k_b, "b_V": v_b}
 
-    def reshape_proj_params(c_proj: Params) -> Params:
+    def reshape_proj_params(c_proj: PyTree[Array]) -> PyTree[Array]:
         out_k = jnp.reshape(c_proj["kernel"], (num_heads, head_dim, model_dim))
         out_b = c_proj["bias"]
         return {"W_O": out_k, "b_O": out_b}
@@ -30,22 +30,22 @@ def tfs_attention_params(cfg: GPT2Config, params: Params) -> Params:
     return {**split_attn_params(params), **reshape_proj_params(params["c_proj"])}
 
 
-def tfs_layer_norm_params(_cfg, params: Params) -> Params:
+def tfs_layer_norm_params(_cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` layer norm parameters to `tfs` layer norm parameters."""
     return {"w": params["scale"], "b": params["bias"]}
 
 
-def tfs_embed_params(_cfg, params: Params) -> Params:
+def tfs_embed_params(_cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` embedding parameters to `tfs` embedding parameters."""
     return {"W_E": params["embedding"]}
 
 
-def tfs_pos_embed_params(_cfg, params: Params) -> Params:
+def tfs_pos_embed_params(_cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` positional embedding parameters to `tfs` positional embedding parameters."""
     return {"W_pos": params["embedding"]}
 
 
-def tfs_mlp_params(_cfg, params: Params) -> Params:
+def tfs_mlp_params(_cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` mlp parameters to `tfs` mlp parameters."""
     return {
         "W_in": params["fc_1"]["kernel"],
@@ -55,7 +55,7 @@ def tfs_mlp_params(_cfg, params: Params) -> Params:
     }
 
 
-def tfs_block_params(cfg, params: Params) -> Params:
+def tfs_block_params(cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` block parameters to `tfs` block parameters."""
     return {
         "ln1": tfs_layer_norm_params(cfg, params["ln_1"]),
@@ -65,12 +65,12 @@ def tfs_block_params(cfg, params: Params) -> Params:
     }
 
 
-def tfs_unembed_params(_cfg, params: Params) -> Params:
+def tfs_unembed_params(_cfg, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` unembed parameters to `tfs` unembed parameters."""
     return {"W_U": params["kernel"], "b_U": params["bias"]}
 
 
-def tfs_transformer_params(cfg: GPT2Config, params: Params) -> Params:
+def tfs_transformer_params(cfg: GPT2Config, params: PyTree[Array]) -> PyTree[Array]:
     """Convert `tx` transformer parameters to `tfs` transformer parameters.
 
     Args:

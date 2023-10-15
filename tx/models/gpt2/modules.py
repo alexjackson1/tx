@@ -1,17 +1,15 @@
 from dataclasses import dataclass
 from functools import partial
-from jaxtyping import Array, Float, Int, PyTree, PyTreeDef
-from typing import Iterable, List, Optional
+from jaxtyping import Array, Float, Int, PyTree
+from typing import Iterable, Optional
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from tx.modules.common import LayerNorm, Embed, PosEmbed, Unembed
-from tx.modules.attention import MultiHeadAttention
+from tx.models import TransformerConfig, TransformerModule
+from tx.modules import LayerNorm, Embed, PosEmbed, Unembed, MultiHeadAttention
 from tx.hooks import apply_hooks, HookFn
-
-from ..base import TransformerConfig, BaseTransformer
 
 
 @dataclass
@@ -64,7 +62,7 @@ class GPT2Config(TransformerConfig):
         return GPT2Config(**{**self.__dict__, **kwargs})
 
 
-class MLP(nn.Module):
+class GPT2MLP(nn.Module):
     """Multi-layer perceptron module.
 
     Attributes:
@@ -132,7 +130,7 @@ class MLP(nn.Module):
         return x
 
 
-class TransformerBlock(nn.Module):
+class GPT2TransformerBlock(nn.Module):
     """Transformer block module.
 
     Attributes:
@@ -185,7 +183,7 @@ class TransformerBlock(nn.Module):
         """Returns the points at which hooks can be applied to the module."""
         return {
             "attn": MultiHeadAttention.hook_points(),
-            "mlp": MLP.hook_points(),
+            "mlp": GPT2MLP.hook_points(),
             "ln_1": LayerNorm.hook_points(),
             "ln_2": LayerNorm.hook_points(),
         }
@@ -229,7 +227,7 @@ class TransformerBlock(nn.Module):
         x_norm = init_layer_norm(name="ln_2")(x, hooks)
 
         # MLP
-        mlp_out = MLP(
+        mlp_out = GPT2MLP(
             name="mlp",
             features=[self.mlp_dim, self.model_dim],
             init_range=self.init_range,
@@ -242,7 +240,7 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class GPT2Transformer(BaseTransformer):
+class GPT2Transformer(TransformerModule):
     """Transformer module.
 
     Attributes:
@@ -303,12 +301,12 @@ class GPT2Transformer(BaseTransformer):
     def hook_points() -> PyTree[str]:
         """Returns the points at which hooks can be applied to the module."""
         return {
-            "embed_hook": "... seq features",
-            "pos_embed_hook": "... seq features",
-            "residual_hook": "... seq features",
-            "output_hook": "... seq features",
+            "embed_hook": "... pos feature",
+            "pos_embed_hook": "... pos feature",
+            "residual_hook": "... pos feature",
+            "output_hook": "... pos feature",
             **{
-                f"block_{i}": TransformerBlock.hook_points()
+                f"block_{i}": GPT2TransformerBlock.hook_points()
                 for i in range(GPT2Transformer.num_layers)
             },
             "ln_f": LayerNorm.hook_points(),
@@ -354,7 +352,7 @@ class GPT2Transformer(BaseTransformer):
 
         # Apply the transformer blocks
         for i in range(self.num_layers):
-            x = TransformerBlock(
+            x = GPT2TransformerBlock(
                 name=f"block_{i}",
                 num_heads=self.num_heads,
                 head_dim=self.head_dim,

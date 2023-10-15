@@ -1,46 +1,19 @@
 from functools import partial
-from jaxtyping import Array
-from typing import Dict, Optional
+from jaxtyping import Array, PyTree
 
 import jax.numpy as jnp
+
 from transformers import FlaxGPT2LMHeadModel, GPT2TokenizerFast
 
-from .module import GPT2Config
+from .modules import GPT2Config
 
 
 class GPT2Loader(FlaxGPT2LMHeadModel):
-    tx_config = GPT2Config(
-        vocab_dim=50257,
-        context_length=1024,
-        model_dim=768,
-        num_layers=12,
-        num_heads=12,
-        head_dim=64,
-        mlp_dim=3072,
-        layer_norm_eps=1e-5,
-        init_range=0.02,
-    )
-
     tokenizer_class = GPT2TokenizerFast
 
     @classmethod
-    def load_tokenizer(cls) -> GPT2TokenizerFast:
-        return cls.tokenizer_class.from_pretrained("gpt2")
-
-    @classmethod
-    def make_config(
-        cls,
-        decode: bool = False,
-        dtype: Optional[jnp.dtype] = None,
-        param_dtype: jnp.dtype = jnp.float64,
-    ) -> GPT2Config:
-        return cls.tx_config.replace(
-            decode=decode, dtype=dtype, param_dtype=param_dtype
-        )
-
-    @classmethod
-    def load_params(cls) -> Dict[str, Array]:
-        model = cls.from_pretrained("gpt2")
+    def load_params(cls, model_name: str, config: GPT2Config) -> PyTree[Array]:
+        model = cls.from_pretrained(model_name)
         params = model._params["transformer"]
         blocks = params["h"]
         embedding: Array = params["wte"]["embedding"]
@@ -49,7 +22,7 @@ class GPT2Loader(FlaxGPT2LMHeadModel):
             "embed": params["wte"],
             "pos_embed": params["wpe"],
             **{
-                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"])
+                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"], config)
                 for i in range(len(blocks))
             },
             "ln_f": params["ln_f"],
@@ -60,10 +33,8 @@ class GPT2Loader(FlaxGPT2LMHeadModel):
         }
 
     @classmethod
-    def attn_params(cls, attn):
-        cfg = cls.tx_config
-
-        kernel_shape = (cfg.num_heads, cfg.head_dim, cfg.model_dim)
+    def attn_params(cls, attn: PyTree[Array], config: GPT2Config):
+        kernel_shape = (config.num_heads, config.head_dim, config.model_dim)
         reshape_kernel = lambda k: jnp.reshape(k, kernel_shape)
 
         qkv_kernel = attn["c_attn"]["kernel"]
@@ -89,7 +60,7 @@ class GPT2Loader(FlaxGPT2LMHeadModel):
         }
 
     @classmethod
-    def mlp_params(cls, mlp):
+    def mlp_params(cls, mlp: PyTree[Array]):
         return {
             "fc_1": {
                 "kernel": jnp.transpose(mlp["c_fc"]["kernel"]),
@@ -102,15 +73,15 @@ class GPT2Loader(FlaxGPT2LMHeadModel):
         }
 
     @classmethod
-    def block_params(cls, block):
+    def block_params(cls, block: PyTree[Array], config: GPT2Config) -> PyTree[Array]:
         return {
             "ln_1": block["ln_1"],
-            "attn": cls.attn_params(block["attn"]),
+            "attn": cls.attn_params(block["attn"], config),
             "ln_2": block["ln_2"],
             "mlp": cls.mlp_params(block["mlp"]),
         }
 
-    def to_params(self) -> Dict[str, Array]:
+    def to_params(self, config: GPT2Config) -> PyTree[Array]:
         params = self._params["transformer"]
         blocks = params["h"]
         embedding: Array = params["wte"]["embedding"]
@@ -119,7 +90,7 @@ class GPT2Loader(FlaxGPT2LMHeadModel):
             "embed": params["wte"],
             "pos_embed": params["wpe"],
             **{
-                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"])
+                f"block_{i}": GPT2Loader.block_params(blocks[f"{i}"], config)
                 for i in range(len(blocks))
             },
             "ln_f": params["ln_f"],

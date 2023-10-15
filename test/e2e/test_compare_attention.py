@@ -15,7 +15,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import flax.linen as nn
 
-from tx.models import GPT2Loader
+from tx.models.gpt2 import GPT2Loader, GPT2Config
 from tx.tree_util import Params
 
 from examples.params import tfs_attention_params
@@ -25,8 +25,7 @@ import param_conversion as convert_params
 # Compare three implementations of MultiHeadAttention
 from examples.tfs_attention import Attention as TFSAttention
 from flax.linen import MultiHeadDotProductAttention as FlaxAttention
-from tx import MultiHeadAttention as TxAttention
-from tx.models.gpt2 import GPT2Config
+from tx.modules import MultiHeadAttention as TxAttention
 
 PRECISION = 1e-6
 
@@ -42,8 +41,8 @@ def gpt2() -> GPT2Loader:
 
 
 @pytest.fixture
-def config(gpt2: GPT2Loader) -> GPT2Config:
-    return gpt2.tx_config
+def config() -> GPT2Config:
+    return GPT2Config()
 
 
 @pytest.fixture
@@ -57,8 +56,8 @@ def tx_module(config: GPT2Config) -> TxAttention:
 
 
 @pytest.fixture
-def tx_params(gpt2: GPT2Loader) -> Params:
-    return gpt2.to_params()["block_0"]["attn"]
+def tx_params(gpt2: GPT2Loader, config: GPT2Config) -> Params:
+    return gpt2.to_params(config)["block_0"]["attn"]
 
 
 @pytest.fixture
@@ -83,8 +82,8 @@ def tfs_module(config: GPT2Config) -> nn.Module:
 
 
 @pytest.fixture
-def tfs_params(gpt2: GPT2Loader, tx_params: Params) -> Params:
-    return tfs_attention_params(gpt2.tx_config, tx_params)
+def tfs_params(config: GPT2Config, tx_params: Params) -> Params:
+    return tfs_attention_params(config, tx_params)
 
 
 def format_ids(val):

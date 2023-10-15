@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from ..hooks import apply_hooks, HookFn
+from tx.hooks import apply_hooks, HookFn
 
 
 class LayerNorm(nn.Module):
