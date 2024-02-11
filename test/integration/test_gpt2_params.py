@@ -2,9 +2,9 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-import jax.config
+from jax import config
 
-jax.config.update("jax_enable_x64", True)
+config.update("jax_enable_x64", True)
 
 from jaxtyping import Array
 
